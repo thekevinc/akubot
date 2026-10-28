@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import re
 import sqlite3
+import json
+from collections import Counter
 from pathlib import Path
 
 
@@ -26,6 +28,7 @@ class Store:
             );
             CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(text);
             CREATE TABLE IF NOT EXISTS paused (guild_id INTEGER PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS control (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);
         """)
 
     def add_examples(self, texts: list[str]) -> int:
@@ -71,4 +74,39 @@ class Store:
 
     def close(self) -> None:
         self.db.close()
+
+    def read_control(self) -> dict | None:
+        row = self.db.execute("SELECT payload FROM control WHERE id=1").fetchone()
+        return json.loads(row[0]) if row else None
+
+    def write_control(self, value: dict) -> None:
+        with self.db:
+            self.db.execute("INSERT INTO control(id,payload) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", (json.dumps(value, allow_nan=False),))
+
+    def page(self, query: str = "", offset: int = 0, limit: int = 20) -> dict:
+        query = query[:150]
+        offset, limit = max(0, min(offset, 100_000)), max(1, min(limit, 50))
+        pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        where = "WHERE text LIKE ? ESCAPE '\\'" if query else ""
+        parameters = (pattern,) if query else ()
+        total = self.db.execute(f"SELECT COUNT(*) FROM examples {where}", parameters).fetchone()[0]
+        rows = self.db.execute(f"SELECT id,text FROM examples {where} ORDER BY id DESC LIMIT ? OFFSET ?", (*parameters, limit, offset)).fetchall()
+        return {"total": total, "offset": offset, "limit": limit, "items": [{"id": row[0], "text": row[1], "characters": len(row[1])} for row in rows]}
+
+    def library_summary(self) -> dict:
+        return self.summarize_texts(self.library_texts())
+
+    def library_texts(self) -> list[str]:
+        return [row[0] for row in self.db.execute("SELECT text FROM examples ORDER BY id DESC LIMIT 100000")]
+
+    @staticmethod
+    def summarize_texts(texts: list[str]) -> dict:
+        stop = set("a an and are as at be been being but by can could did do does doing for from had has have how i if in into is it its just like me my no not of on or our out really so some than that the their them then there these they this those to too up us very was we were what when where which who why will with would you your yeah yes okay ok link email mention number secret everyone here person im ive dont thats youre lol don didn isn doesn wasn couldn shouldn wouldn haven hasn".split())
+        counts: Counter[str] = Counter()
+        messages, characters = 0, 0
+        for text in texts:
+            messages += 1
+            characters += len(text)
+            counts.update(word for word in re.findall(r"[^\W\d_]{3,24}", text.casefold()) if word not in stop)
+        return {"messages": messages, "characters": characters, "unique_words": len(counts), "words": [{"word": word, "count": count} for word, count in counts.most_common(60)], "scan_limit": 100000}
 

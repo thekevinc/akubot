@@ -60,11 +60,36 @@ docker compose up -d --build
 docker compose run --rm --no-deps tools check
 ```
 
-The first command downloads `llama3.2:3b`, roughly 2 GB. It is an explicit one-time download operation with internet access, no Discord token, and no message data mounted. The running model has a read-only model directory and an internal network with no external connection. Neither the bot nor model publishes a host port.
+The first command downloads `llama3.2:3b`, roughly 2 GB. It is an explicit one-time download operation with internet access, no Discord token, and no message data mounted. The running model has a read-only model directory and an internal network with no external connection. The model API has no published host port. Only the dashboard is published, on the host's loopback address.
 
 The check confirms the model is installed and reports how many reviewed style examples are loaded. Mention the bot in an approved channel to test it. Each follow-up should contain an explicit bot mention too. Simply typing the letters `@aku` without selecting the bot in Discord does not create a real mention.
 
-Useful controls:
+Monitor and configure Akubot locally or through Discord.
+
+### Local dashboard
+
+Once the bot is running, open **[http://localhost:8765](http://localhost:8765)** on this computer. The dashboard is served by the bot container and is published only on the host's loopback address. It is not hosted on GitHub or a third-party website. If that port is already in use, set `DASHBOARD_HOST_PORT` in `.env` before starting this project. Do not stop another project's server to free the port.
+
+- **Overview:** connection status, model readiness, GPU memory allocation, active/queued requests, and timing for waiting, model loading, and generation. Activity retains at most 100 timing records in RAM, with no message text or Discord identities.
+- **Tuning:** change creativity, output length, model context, cooldown, server request limits, temporary memory, and keep-loaded time. Values apply to the next reply without restarting the bot. Only installed local models can be selected; there is no model download or hosted-model fallback in the dashboard.
+- **Try a reply:** test a prompt locally without posting to Discord or adding it to the conversation memory or style database.
+- **Message library:** search and page through the reviewed example database. The word cloud counts words in up to the latest 100,000 reviewed messages and omits common filler words. Select a word to search. It stays empty until you import reviewed examples; it does not collect live server history.
+- **Personality:** edit the active style rules and public facts. Saving clears temporary conversations and invalidates in-flight replies based on the previous personality. Reviewed message examples are unchanged.
+
+Defaults are a **two-second per-person cooldown**, **30 requests per server per minute**, **128 output tokens**, and **30 minutes of model residency**, with a preload when Akubot starts. Loading a model after it has been unloaded can make the first reply slower. Keeping it loaded longer trades GPU memory for readiness. Rate limits and the four-request pending cap still apply.
+
+Dashboard settings and personality edits persist in the private SQLite database. After saving settings in the dashboard, use its Personality page for changes rather than editing the seed persona file. The seed file remains the fallback for a database that has no saved dashboard settings. The database browser is read-only and does not provide arbitrary SQL or a way to bypass the NSFW import checks.
+
+The dashboard trusts users and processes on this computer. Its APIs reject foreign hosts, cross-origin browser requests, and requests missing the local UI header. There are no third-party scripts, fonts, analytics, cookies, or message-content access logs. It is not a remote administration service; do not publish or forward its port to other computers.
+
+The dashboard stops when the bot container stops. To bring up this project's GPU setup when you are ready:
+
+```sh
+cd ~/workspace/akubot
+docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
+```
+
+### Discord controls
 
 | Command | Access | Effect |
 | --- | --- | --- |
@@ -94,7 +119,7 @@ Use the same two `-f` arguments when stopping this configuration. The CPU versio
 
 ## 4. Teach it your style
 
-You can initially edit `config/persona.json` **inside your private storage folder**, not the template in the checkout. The model reads the private copy at startup. Add only public facts you want it to share. Restart this project's bot after editing that file.
+Use the dashboard's **Personality** page to edit the active persona without restarting. Before any dashboard settings have been saved, you can also edit `config/persona.json` **inside your private storage folder**, not the template in the checkout. The private file is a startup seed; saved dashboard settings take priority. Add only public facts you want the bot to share.
 
 For message examples, request your [official Discord data package](https://support.discord.com/hc/en-us/articles/360004957991-Your-Discord-Data-Package). Unzip it locally into `imports/discord-export` inside private storage. The importer supports the official outgoing-message JSON and older CSV layout. It does not scrape Discord, fetch attachments, or reconstruct missing conversation partners' messages.
 
@@ -138,9 +163,9 @@ python -m unittest discover -s tests -v
 
 An optional GitHub Actions workflow is provided at `ci/github-actions.yml`. To enable it later, copy it to `.github/workflows/checks.yml` using a GitHub connection authorized to manage workflows. It runs the tests, validates Compose, builds the image, and checks its command entrypoint without starting a bot.
 
-Tests use temporary files and fake model responses. They do not connect to Discord, download a model, or start a server. Python dependencies are pinned. Both container images are pinned by verified image digest, and build actions by commit. Check current security releases before updating these pins.
+Tests use temporary files and fake model responses. Dashboard routes and privacy boundaries are tested in memory without opening a web port. Tests do not connect to Discord, download a model, or start the bot. Python dependencies are pinned. Both container images are pinned by verified image digest, and build actions by commit. Check current security releases before updating these pins.
 
 ## Moving to remote hosting
 
-Use the same Compose project on a Linux host. Rerun setup there to generate matching local permissions, securely transfer only the approved persona/examples if desired, and download the model on that host. Keep private storage outside the checkout, restrict SSH access, and never publish Ollama's port. Stop the old bot instance before switching. No hosting subscription or remote machine is provisioned by this repository.
+Use the same Compose project on a Linux host. Rerun setup there to generate matching local permissions, securely transfer only the approved persona/examples if desired, and download the model on that host. Keep private storage outside the checkout, restrict SSH access, and never publish Ollama's port. Keep the dashboard bound to loopback; if needed, access it through an authenticated SSH tunnel. Stop the old bot instance before switching. No hosting subscription or remote machine is provisioned by this repository.
 

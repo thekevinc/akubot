@@ -271,7 +271,7 @@ class ResponderTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_rate_limits_and_bounded_queue(self):
         await self.responder.reply(Request(1, 10, 7, "first"))
-        with self.assertRaisesRegex(Notice, "few seconds"):
+        with self.assertRaisesRegex(Notice, "2 seconds"):
             await self.responder.reply(Request(1, 10, 7, "second"))
         self.responder.gate.pending = 4
         with self.assertRaisesRegex(Notice, "few replies"):

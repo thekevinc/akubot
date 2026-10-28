@@ -54,7 +54,14 @@ class Persona:
             if path.stat().st_size > 32_768:
                 raise ValueError
             data = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(data, dict):
+            return cls.from_dict(data)
+        except (OSError, ValueError, TypeError, KeyError):
+            raise ConfigurationError("Check config/persona.json: expected a name, description, style_rules, and public_facts.") from None
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Persona":
+        try:
+            if not isinstance(data, dict) or set(data) != {"name", "description", "style_rules", "public_facts"}:
                 raise ValueError
             for field in ("style_rules", "public_facts"):
                 if not isinstance(data.get(field), list) or not all(
@@ -64,8 +71,8 @@ class Persona:
             if not all(isinstance(data.get(key), str) and 0 < len(data[key]) <= 1000 for key in ("name", "description")):
                 raise ValueError
             return cls(data["name"], data["description"], tuple(data["style_rules"]), tuple(data["public_facts"]))
-        except (OSError, ValueError, TypeError, KeyError):
-            raise ConfigurationError("Check config/persona.json: expected a name, description, style_rules, and public_facts.") from None
+        except (ValueError, TypeError, KeyError):
+            raise ConfigurationError("Use a name, description, style rules, and public facts within the displayed limits.") from None
 
 
 @dataclass(frozen=True)
@@ -78,6 +85,8 @@ class Settings:
     persona_file: Path
     model_url: str
     model: str
+    dashboard_enabled: bool = False
+    dashboard_port: int = 8787
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -87,6 +96,12 @@ class Settings:
         model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
         if not model or len(model) > 150 or "cloud" in model.lower() or any(char.isspace() for char in model):
             raise ConfigurationError("Choose a local Ollama model, such as llama3.2:3b.")
+        try:
+            dashboard_port = int(os.getenv("DASHBOARD_PORT", "8787"))
+            if not 1024 <= dashboard_port <= 65535:
+                raise ValueError
+        except ValueError:
+            raise ConfigurationError("DASHBOARD_PORT must be between 1024 and 65535.") from None
         return cls(
             next(iter(owner)),
             ids(os.getenv("ALLOWED_GUILD_IDS", ""), "ALLOWED_GUILD_IDS", required=True),
@@ -96,6 +111,8 @@ class Settings:
             Path(os.getenv("PERSONA_FILE", "config/persona.json")),
             local_model_url(os.getenv("OLLAMA_URL", "http://ollama:11434")),
             model,
+            os.getenv("DASHBOARD_ENABLED", "0") == "1",
+            dashboard_port,
         )
 
     def read_token(self) -> str:

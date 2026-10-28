@@ -70,7 +70,7 @@ def initialize(private: Path, owner: str, guilds: str, channels: str, token: str
     if env.is_file():
         for line in env.read_text(encoding="utf-8").splitlines():
             key, separator, value = line.partition("=")
-            if separator and key in {"OLLAMA_MODEL", "OLLAMA_IMAGE", "OLLAMA_MEMORY_LIMIT", "OLLAMA_CPU_LIMIT"}:
+            if separator and key in {"OLLAMA_MODEL", "OLLAMA_IMAGE", "OLLAMA_MEMORY_LIMIT", "OLLAMA_CPU_LIMIT", "DASHBOARD_HOST_PORT"}:
                 value = value.strip().strip("'\"")
                 if re.fullmatch(r"[A-Za-z0-9_./:@-]+", value):
                     existing[key] = value
@@ -80,7 +80,7 @@ def initialize(private: Path, owner: str, guilds: str, channels: str, token: str
         f"DISCORD_OWNER_ID={owner}\nALLOWED_GUILD_IDS={guilds}\nALLOWED_CHANNEL_IDS={channels}\n"
         f"OLLAMA_MODEL={existing.get('OLLAMA_MODEL', 'llama3.2:3b')}\n"
         f"OLLAMA_IMAGE={existing.get('OLLAMA_IMAGE', 'ollama/ollama:0.40.12@sha256:20d1bbfbabe1c97ba4b16301f08a20d8484bcf77047742a3cb71c613d8e12d0b')}\n"
-        + "".join(f"{key}={existing[key]}\n" for key in ("OLLAMA_MEMORY_LIMIT", "OLLAMA_CPU_LIMIT") if key in existing)
+        + "".join(f"{key}={existing[key]}\n" for key in ("OLLAMA_MEMORY_LIMIT", "OLLAMA_CPU_LIMIT", "DASHBOARD_HOST_PORT") if key in existing)
     )
     descriptor = os.open(env, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:

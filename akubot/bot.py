@@ -13,6 +13,8 @@ from .config import Persona, Settings
 from .model import Ollama
 from .service import Notice, Request, Responder
 from .storage import Store
+from .control import Control
+from .dashboard import Dashboard
 
 logger = logging.getLogger("akubot")
 
@@ -39,6 +41,8 @@ class AkuClient(discord.Client):
         self.responder: Responder | None = None
         self.cleanup_task: asyncio.Task | None = None
         self.tree = app_commands.CommandTree(self)
+        self.control = Control(store, settings.model, persona)
+        self.dashboard: Dashboard | None = None
         self._register_commands()
 
     def _register_commands(self) -> None:
@@ -72,9 +76,9 @@ class AkuClient(discord.Client):
                 return
             state = "paused" if self.store.is_paused(interaction.guild_id) else "responding to mentions"
             await interaction.response.send_message(
-                f"Aku is {state}. Local model: `{self.settings.model}`. "
+                f"Aku is {state}. Local model: `{self.control.tuning.model}`. "
                 f"Reviewed style examples: {self.store.count()}. "
-                "Conversation memory stays in RAM for up to 15 minutes, with expired entries cleared every minute.",
+                f"Conversation memory stays in RAM for up to {self.control.tuning.memory_minutes} minutes, with expired entries cleared every minute.",
                 ephemeral=True,
             )
 
@@ -89,7 +93,12 @@ class AkuClient(discord.Client):
 
     async def setup_hook(self) -> None:
         self.model_session = aiohttp.ClientSession(trust_env=False, connector=aiohttp.TCPConnector(limit=4))
-        self.responder = Responder(self.store, Ollama(self.model_session, self.settings.model_url, self.settings.model), self.persona)
+        self.responder = Responder(self.store, Ollama(self.model_session, self.settings.model_url, self.settings.model, self.control), self.persona, control=self.control)
+        self.dashboard = Dashboard(self)
+        if self.settings.dashboard_enabled:
+            await self.dashboard.start(self.settings.dashboard_port)
+        if self.control.tuning.preload:
+            self.dashboard.request_warm()
         # Server-scoped registration avoids enabling commands in other servers or DMs.
         for guild_id in self.settings.guild_ids:
             guild = discord.Object(id=guild_id)
@@ -150,6 +159,8 @@ class AkuClient(discord.Client):
         logger.error("A Discord event failed; no event content logged.")
 
     async def close(self) -> None:
+        if self.dashboard is not None:
+            await self.dashboard.close()
         if self.cleanup_task is not None:
             self.cleanup_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

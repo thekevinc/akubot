@@ -32,7 +32,11 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
       DATA_DIR: /data
       PERSONA_FILE: /config/persona.json
+      DASHBOARD_ENABLED: "1"
+      DASHBOARD_PORT: "8787"
     secrets: [discord_token]
+    ports:
+      - "127.0.0.1:${DASHBOARD_HOST_PORT:-8765}:8787"
     volumes:
       - type: bind
         source: ${AKU_PRIVATE_DIR:?Run python scripts/setup.py first}/data

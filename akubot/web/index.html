@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Aku · Local dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#overview" aria-label="Aku dashboard home"><span class="brand-mark">a<span>•</span></span><span>aku<span class="brand-period">.</span></span></a>
+    <div class="workspace-label">YOUR LOCAL DOUBLE</div>
+    <nav aria-label="Dashboard pages">
+      <button class="nav-item active" data-tab="overview" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>Overview</button>
+      <button class="nav-item" data-tab="tuning"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="16" cy="17" r="3"/></svg>Tuning</button>
+      <button class="nav-item" data-tab="library"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 4 16 4 16 0V5M4 12v7c0 4 16 4 16 0v-7"/></svg>Message library<span class="nav-count" id="nav-library-count">0</span></button>
+      <button class="nav-item" data-tab="personality"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>Personality</button>
+    </nav>
+    <div class="sidebar-note"><span class="mini-dot"></span><div><strong>On your computer</strong><p>Local model. Private data.</p></div></div>
+    <div class="sidebar-bottom"><span id="sidebar-state" class="status-dot"></span><span id="sidebar-status">Connecting</span><span class="version">v0.2</span></div>
+  </aside>
+
+  <main>
+    <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> Akubot</div><div class="top-actions"><span class="badge" id="connection-badge"><span class="status-dot"></span>Connecting</span><button id="pause-button" class="button quiet" disabled>Pause replies</button></div></header>
+    <div id="connection-error" class="banner" role="status" hidden>Dashboard connection interrupted. Reconnecting automatically.</div>
+    <div class="page-heading"><div><div class="eyebrow">AKUBOT CONTROL ROOM</div><h1 id="page-title">Overview</h1><p id="page-description">A live look at replies, model readiness, and your message library.</p></div><span class="live-indicator"><span class="mini-dot"></span>LIVE · EVERY 3 SEC</span></div>
+
+    <section id="page-overview" class="page">
+      <div class="stats-grid">
+        <article class="stat-card"><span class="stat-label">Last reply</span><strong id="last-reply">Waiting</strong><span class="stat-foot">Queue + local generation</span></article>
+        <article class="stat-card"><span class="stat-label">Typical reply</span><strong id="typical-reply">Waiting</strong><span class="stat-foot">Median of recent replies</span></article>
+        <article class="stat-card"><span class="stat-label">Replies this session</span><strong id="reply-count">0</strong><span class="stat-foot" id="uptime">Just started</span></article>
+        <article class="stat-card"><span class="stat-label">Waiting for a reply</span><strong id="queue-count">0</strong><span class="stat-foot" id="active-count">Nothing in progress</span></article>
+      </div>
+      <div class="overview-grid">
+        <article class="card chart-card"><div class="card-heading"><div><h2>Reply timing</h2><p>See where the time goes.</p></div><span class="subtle-label">LAST 24 EVENTS</span></div><div class="chart-legend"><span><i class="legend-queue"></i>Waiting</span><span><i class="legend-load"></i>Loading model</span><span><i class="legend-generate"></i>Generating</span></div><div class="timing-chart" id="timing-chart"><div class="empty-chart">Mention Akubot in Discord to see reply timings here.</div></div><div class="chart-footer"><span>Timing data only. Message contents stay out of this view.</span><span id="rate-limited-count"></span></div></article>
+        <article class="card model-card"><div class="card-heading"><h2>Your model</h2><span id="model-badge" class="pill muted">Checking</span></div><div class="model-glyph" aria-hidden="true">✳</div><h3 id="model-name">Local model</h3><p class="model-caption" id="model-caption">Checking the local connection.</p><dl class="model-details"><div><dt>Model on GPU</dt><dd id="gpu-percent">N/A</dd></div><div><dt>GPU memory</dt><dd id="vram">N/A</dd></div><div><dt>Keep ready</dt><dd id="keep-ready">30 minutes</dd></div></dl><button class="button secondary full" id="warm-button">Load model</button><p class="small muted-text">Keeping the model loaded avoids a slower first reply.</p></article>
+      </div>
+      <article class="card activity-card"><div class="card-heading"><div><h2>Recent activity</h2><p>Reply timing, cooldowns, and model loads. No chat transcripts.</p></div><button class="text-button" data-tab="tuning">Adjust settings ↗</button></div><div class="table-scroll"><table><thead><tr><th>Event</th><th>Time</th><th>Waiting</th><th>Model load</th><th>Generation</th><th>Total</th><th>Result</th></tr></thead><tbody id="activity-body"><tr><td colspan="7" class="empty-cell">Activity will appear after the next mention.</td></tr></tbody></table></div></article>
+      <div class="privacy-line"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6zM8 12l3 3 5-6"/></svg><span>Private by default: local AI, no chat-content logs, NSFW sources excluded from imports.</span><button class="text-button" data-tab="library">View library</button></div>
+    </section>
+
+    <section id="page-tuning" class="page" hidden>
+      <form id="tuning-form">
+        <div class="two-column">
+          <article class="card"><div class="card-heading"><div><h2>How Aku replies</h2><p>Find a comfortable pace and style.</p></div></div>
+            <label class="field"><span>Local model</span><select name="model" id="tune-model" required></select><small>Choose from models already installed on this computer.</small></label>
+            <label class="field"><span class="label-row">Reply length <output id="max-tokens-output">128 tokens</output></span><input type="range" name="max_tokens" min="32" max="512" step="16" value="128"><small>Higher limits allow longer replies. Aku can use fewer tokens.</small></label>
+            <label class="field"><span class="label-row">Creativity <output id="temperature-output">0.80</output></span><input type="range" name="temperature" min="0" max="1.5" step="0.05" value="0.8"><small>Lower is more consistent. Higher is more varied.</small></label>
+            <label class="field"><span class="label-row">Time between pings <output id="cooldown-output">2 seconds</output></span><input type="range" name="cooldown_seconds" min="0" max="30" step="1" value="2"><small>Limits how often one person can trigger a reply. Set to zero to disable.</small></label>
+            <label class="field inline-field"><span>Server requests per minute<small>A shared limit for everyone in each enabled server.</small></span><input name="requests_per_minute" type="number" min="1" max="120" value="30" required></label>
+          </article>
+          <article class="card"><div class="card-heading"><div><h2>Speed &amp; memory</h2><p>Balance responsiveness with resource use.</p></div></div>
+            <label class="field"><span>Keep model ready</span><select name="keep_alive"><option value="5m">5 minutes</option><option value="30m" selected>30 minutes</option><option value="2h">2 hours</option><option value="-1">Always loaded</option></select><small>Keeping it loaded uses GPU memory and avoids cold starts.</small></label>
+            <label class="check-field"><input type="checkbox" name="preload" checked><span>Load the model when Akubot starts<small>Prepares it before the first Discord mention.</small></span></label>
+            <label class="field"><span>Conversation memory</span><select name="memory_turns"><option value="0">Off</option><option value="1">Last exchange</option><option value="2" selected>Last 2 exchanges</option><option value="3">Last 3 exchanges</option><option value="4">Last 4 exchanges</option><option value="5">Last 5 exchanges</option><option value="6">Last 6 exchanges</option></select><small>Temporary context stays separate for each person and channel.</small></label>
+            <label class="field inline-field"><span>Forget idle conversations after<small>Memory is held in RAM, never saved as chat history.</small></span><span class="input-unit"><input name="memory_minutes" type="number" min="1" max="60" value="15" required>min</span></label>
+            <label class="field"><span>Context window</span><select name="context_tokens"><option value="2048">2,048 tokens</option><option value="4096" selected>4,096 tokens</option><option value="8192">8,192 tokens</option></select><small>A larger window can hold more context and uses more memory.</small></label>
+          </article>
+        </div>
+        <div class="save-bar"><span id="tuning-save-state">Changes apply to the next reply. No restart needed.</span><div><button type="button" class="button quiet" id="restore-tuning">Restore defaults</button><button type="submit" class="button primary" id="save-tuning">Save changes</button></div></div>
+      </form>
+      <article class="card preview-card"><div class="card-heading"><div><h2>Try a reply</h2><p>Test the current settings here without sending anything to Discord.</p></div><span class="pill muted">LOCAL ONLY</span></div><form id="preview-form"><label for="preview-prompt" class="sr-only">Test message</label><textarea id="preview-prompt" maxlength="1500" rows="2" placeholder="Type something you might say to Aku…" required></textarea><div class="preview-actions"><span class="small muted-text">This test is not added to conversation memory or the database.</span><button class="button secondary" id="preview-button">Try a reply</button></div></form><div id="preview-result" class="preview-result" role="status" hidden></div></article>
+    </section>
+
+    <section id="page-library" class="page" hidden>
+      <div class="library-top"><article class="stat-card"><span class="stat-label">Reviewed messages</span><strong id="library-total">0</strong><span class="stat-foot">Your approved style examples</span></article><article class="stat-card"><span class="stat-label">Distinct words</span><strong id="library-unique">0</strong><span class="stat-foot">Common filler words excluded</span></article><article class="library-note"><span class="pill success">NSFW FILTER ON</span><p>Only reviewed examples from verified, non-NSFW channels belong in this library.</p></article></div>
+      <article class="card cloud-card"><div class="card-heading"><div><h2>Your words, at a glance</h2><p id="cloud-description">Bigger words appear more often in your reviewed messages.</p></div><button class="button quiet" id="refresh-library">Refresh library</button></div><div id="cloud-stage" class="cloud-stage"><div class="library-empty"><div class="empty-glyph">Aa</div><h3>Your word cloud starts here</h3><p>Once you import reviewed messages, your most-used words will take shape.</p><a class="button secondary" href="https://support.discord.com/hc/en-us/articles/360004957991-Your-Discord-Data-Package" target="_blank" rel="noopener noreferrer">Request your Discord export ↗</a></div></div><div id="word-list" class="word-list" aria-label="Common words and counts"></div></article>
+      <article class="card"><div class="card-heading library-table-heading"><div><h2>Browse the database</h2><p>Read-only access to your reviewed messages. Live server history is not collected.</p></div><label class="search-box"><span class="sr-only">Search messages</span><input id="message-search" type="search" maxlength="150" placeholder="Search reviewed messages…"></label></div><div class="table-scroll"><table class="examples-table"><thead><tr><th>ID</th><th>Reviewed message</th><th>Length</th></tr></thead><tbody id="examples-body"><tr><td colspan="3" class="empty-cell">No reviewed messages yet.</td></tr></tbody></table></div><div class="pagination"><span id="page-summary">0 messages</span><div><button class="button quiet" id="previous-page" disabled>Previous</button><button class="button quiet" id="next-page" disabled>Next</button></div></div></article>
+      <details class="card import-guide"><summary>How to get your messages into the library <span>+</span></summary><ol><li><strong>Request your export.</strong> Discord → User Settings → Data &amp; Privacy → Request your data. Select Messages. Delivery can take up to 30 days.</li><li><strong>Keep it local.</strong> Unzip it into your private imports folder, outside GitHub and OneDrive.</li><li><strong>Select and review.</strong> Refresh channel checks, prepare selected non-NSFW channels, and remove private stories, names, and quotes from friends.</li><li><strong>Load approved examples.</strong> The importer rechecks channel status before loading. Unknown channels and NSFW sources are blocked.</li></ol><p class="small muted-text">The export contains messages you sent, including DMs. It does not include the other side of conversations. Use the repository’s import guide when your export arrives.</p></details>
+    </section>
+
+    <section id="page-personality" class="page" hidden>
+      <form id="persona-form"><div class="two-column"><article class="card"><div class="card-heading"><div><h2>A little more like you</h2><p>Give Aku a voice while your message export is on its way.</p></div></div><label class="field"><span>Name</span><input name="name" maxlength="60" required></label><label class="field"><span>Description</span><textarea name="description" rows="3" maxlength="1000" required></textarea><small>Describe the personality and the kind of conversation it should fit.</small></label><label class="field"><span>Style notes</span><textarea name="style_rules" rows="8" maxlength="12000" placeholder="One note per line"></textarea><small>One note per line, such as “use short lowercase replies.”</small></label></article><article class="card"><div class="card-heading"><div><h2>Facts Aku can share</h2><p>Optional information you want it to know about you.</p></div></div><label class="field"><span>Public facts</span><textarea name="public_facts" rows="10" maxlength="12000" placeholder="One public fact per line"></textarea><small>Only add facts you want anyone in an enabled server to hear. Keep private information out.</small></label><div class="soft-note"><strong>Style is different from memory.</strong><p>Reviewed messages help with how you write. These facts define what Aku can say about you.</p></div></article></div><div class="save-bar"><span id="persona-save-state">Saving clears temporary conversations so old facts are not carried forward.</span><button type="submit" class="button primary">Save personality</button></div></form>
+      <article class="card privacy-controls"><div><h2>Clear temporary conversations</h2><p>Forget the short-lived context for everyone in enabled servers. Your reviewed library stays intact.</p></div><button id="forget-button" class="button quiet">Clear conversations</button></article>
+    </section>
+    <footer class="footer"><span>Akubot · Local control</span><span id="footer-status">Waiting for local status</span></footer>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

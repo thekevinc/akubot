@@ -29,10 +29,13 @@ class Memory:
     def get(self, key: SessionKey) -> list[dict[str, str]]:
         self.purge()
         session = self.sessions.get(key)
-        return [dict(turn) for turn in session.turns] if session else []
+        return [dict(turn) for turn in session.turns[-2 * self.max_turns:]] if session and self.max_turns > 0 else []
 
     def append(self, key: SessionKey, prompt: str, answer: str) -> None:
         self.purge()
+        if self.max_turns <= 0:
+            self.forget(key)
+            return
         session = self.sessions.pop(key, Session(self.clock()))
         session.updated = self.clock()
         session.turns.extend([{"role": "user", "content": prompt[:512]}, {"role": "assistant", "content": answer[:512]}])
