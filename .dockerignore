@@ -1,0 +1,8 @@
+*
+!akubot/
+!akubot/**
+!requirements.txt
+!Dockerfile
+**/__pycache__
+**/*.pyc
+
