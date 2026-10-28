@@ -468,6 +468,58 @@ class SetupTests(unittest.TestCase):
             self.assertIn("OLLAMA_CPU_LIMIT=4", (project / ".env").read_text())
 
 
+class ConnectTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location("aku_connect", ROOT / "scripts/connect_discord.py")
+        cls.connect = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.connect)
+
+    def test_connect_discovers_owner_and_saves_only_private_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, private = root / "project", root / "private"
+            (project / "config").mkdir(parents=True)
+            (project / "config/persona.json").write_text((ROOT / "config/persona.json").read_text())
+            token = "FAKE_BOT_TOKEN_" + "x"*40
+            real_initialize = self.connect.initialize
+
+            def initialize(folder, owner, guilds, channels, secret):
+                return real_initialize(folder, owner, guilds, channels, secret, project=project)
+
+            output = io.StringIO()
+            argv = ["connect_discord.py", "--guild-id", "1", "--private-dir", str(private)]
+            responses = [{"id": "99", "owner": {"id": "7"}}, [{"id": "123", "type": 0, "nsfw": False}, {"id": "456", "type": 0, "nsfw": True}]]
+            with patch("sys.argv", argv), patch.object(self.connect, "__file__", str(project / "scripts/connect_discord.py")), \
+                 patch.object(self.connect.getpass, "getpass", return_value=token), patch.object(self.connect, "initialize", side_effect=initialize), \
+                 patch.object(self.connect, "discord_get", side_effect=responses) as api, contextlib.redirect_stdout(output):
+                self.assertEqual(self.connect.main(), 0)
+            self.assertNotIn(token, output.getvalue())
+            self.assertNotIn(token, (project / ".env").read_text())
+            self.assertIn("DISCORD_OWNER_ID=7", (project / ".env").read_text())
+            policy = ChannelPolicy.load(private / "config/channel-policy.json")
+            self.assertTrue(policy.allows("123"))
+            self.assertFalse(policy.allows("456"))
+            self.assertEqual([call.args[0] for call in api.call_args_list], ["/oauth2/applications/@me", "/guilds/1/channels"])
+
+    def test_failed_authentication_does_not_save_token(self):
+        with tempfile.TemporaryDirectory() as directory:
+            private = Path(directory) / "private"
+            output = io.StringIO()
+            token = "FAKE_INVALID_TOKEN_" + "x"*40
+            argv = ["connect_discord.py", "--guild-id", "1", "--private-dir", str(private)]
+            with patch("sys.argv", argv), patch.object(self.connect.getpass, "getpass", return_value=token), \
+                 patch.object(self.connect, "discord_get", side_effect=ValueError("Discord rejected the bot token.")), contextlib.redirect_stdout(output):
+                self.assertEqual(self.connect.main(), 1)
+            self.assertFalse(private.exists())
+            self.assertNotIn(token, output.getvalue())
+
+    def test_metadata_helper_cannot_fetch_messages_or_external_urls(self):
+        for path in ("/channels/1/messages", "https://outside.example", "/guilds/1/channels?extra=1"):
+            with self.assertRaises(ValueError):
+                self.connect.discord_get(path, "FAKE_TEST_TOKEN")
+
+
 
 if __name__ == "__main__":
     unittest.main()
