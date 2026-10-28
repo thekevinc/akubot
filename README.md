@@ -62,6 +62,8 @@ docker compose run --rm --no-deps tools check
 
 The first command downloads `llama3.2:3b`, roughly 2 GB. It is an explicit one-time download operation with internet access, no Discord token, and no message data mounted. The running model has a read-only model directory and an internal network with no external connection. The model API has no published host port. Only the dashboard is published, on the host's loopback address.
 
+The runtime sets `OLLAMA_NOPRUNE=1` because Ollama's startup cleanup tries to remove empty manifest directories. That cleanup fails against the read-only cache and otherwise causes a restart loop. After updating this setting, use `docker compose up -d ollama` to recreate the container with the new configuration. For NVIDIA setups, include `-f compose.yaml -f compose.gpu.yaml` after `docker compose`.
+
 The check confirms the model is installed and reports how many reviewed style examples are loaded. Mention the bot in an approved channel to test it. Each follow-up should contain an explicit bot mention too. Simply typing the letters `@aku` without selecting the bot in Discord does not create a real mention.
 
 Monitor and configure Akubot locally or through Discord.
