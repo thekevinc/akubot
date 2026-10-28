@@ -9,6 +9,7 @@ from pathlib import Path
 from .config import ConfigurationError, Persona, Settings, local_model_url
 from .importer import discover, prepare, read_reviewed
 from .storage import Store
+from .channel_policy import ChannelPolicy
 
 
 def parser() -> argparse.ArgumentParser:
@@ -23,8 +24,10 @@ def parser() -> argparse.ArgumentParser:
     prep.add_argument("--channel-id", action="append", required=True)
     prep.add_argument("--owner-id", required=True)
     prep.add_argument("--output", type=Path, required=True)
+    prep.add_argument("--channel-policy", type=Path, default=Path("/config/channel-policy.json"))
     load = commands.add_parser("load-examples", help="Load only manually reviewed, shareable examples")
     load.add_argument("file", type=Path)
+    load.add_argument("--channel-policy", type=Path, default=Path("/config/channel-policy.json"))
     load.add_argument("--reviewed", action="store_true", required=True,
                       help="Confirm every example is safe for everyone who can invoke the bot")
     commands.add_parser("clear-examples", help="Remove all stored style examples")
@@ -95,12 +98,12 @@ def main() -> int:
                 print(channel.channel_id)
             print("Only channel IDs are shown. Use the export's index.json locally to identify channels.")
         elif args.command == "prepare-export":
-            kept, skipped = prepare(args.directory, args.output, set(args.channel_id), args.owner_id)
+            kept, skipped = prepare(args.directory, args.output, set(args.channel_id), args.owner_id, ChannelPolicy.load(args.channel_policy))
             print(f"Prepared {kept} candidates; skipped {skipped} records. Nothing was added to the bot.")
             print("Manually remove private facts, names, quotes, and anything unsuitable for every enabled server.")
             print("Save the approved lines in a separate JSONL file before using load-examples --reviewed.")
         else:
-            texts = read_reviewed(args.file) if args.command == "load-examples" else None
+            texts = read_reviewed(args.file, ChannelPolicy.load(args.channel_policy)) if args.command == "load-examples" else None
             store = Store(Path(os.getenv("DATA_DIR", "data")) / "aku.sqlite3")
             try:
                 if texts is not None:

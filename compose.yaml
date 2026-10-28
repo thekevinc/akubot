@@ -23,8 +23,10 @@ services:
     restart: unless-stopped
     environment:
       DISCORD_TOKEN_FILE: /run/secrets/discord_token
-      DISCORD_OWNER_ID: ${DISCORD_OWNER_ID:?Run python scripts/setup.py first}
-      ALLOWED_GUILD_IDS: ${ALLOWED_GUILD_IDS:?Select at least one server}
+      # The application validates these before it connects to Discord. Empty
+      # values allow provisioning the local model before the sensitive step.
+      DISCORD_OWNER_ID: ${DISCORD_OWNER_ID:-}
+      ALLOWED_GUILD_IDS: ${ALLOWED_GUILD_IDS:-}
       ALLOWED_CHANNEL_IDS: ${ALLOWED_CHANNEL_IDS:-}
       OLLAMA_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
@@ -144,6 +146,10 @@ services:
       - type: bind
         source: ${AKU_PRIVATE_DIR}/imports
         target: /imports
+        read_only: true
+      - type: bind
+        source: ${AKU_PRIVATE_DIR}/config/channel-policy.json
+        target: /config/channel-policy.json
         read_only: true
       - type: bind
         source: ${AKU_PRIVATE_DIR}/review

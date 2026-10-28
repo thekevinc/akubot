@@ -59,15 +59,29 @@ def initialize(private: Path, owner: str, guilds: str, channels: str, token: str
     if not persona.exists():
         shutil.copyfile(project / "config" / "persona.json", persona)
         persona.chmod(0o600)
+    policy = private / "config" / "channel-policy.json"
+    if not policy.exists():
+        policy.write_text('{}\n', encoding="utf-8")
+        policy.chmod(0o600)
     uid = os.getuid() if hasattr(os, "getuid") and os.getuid() != 0 else 10001
     gid = os.getgid() if hasattr(os, "getgid") and os.getgid() != 0 else 10001
+    env = project / ".env"
+    existing = {}
+    if env.is_file():
+        for line in env.read_text(encoding="utf-8").splitlines():
+            key, separator, value = line.partition("=")
+            if separator and key in {"OLLAMA_MODEL", "OLLAMA_IMAGE", "OLLAMA_MEMORY_LIMIT", "OLLAMA_CPU_LIMIT"}:
+                value = value.strip().strip("'\"")
+                if re.fullmatch(r"[A-Za-z0-9_./:@-]+", value):
+                    existing[key] = value
     config = (
         "# Local machine configuration. No bot token is stored here.\n"
         f"AKU_PRIVATE_DIR='{private.as_posix()}'\nAKU_UID={uid}\nAKU_GID={gid}\n"
         f"DISCORD_OWNER_ID={owner}\nALLOWED_GUILD_IDS={guilds}\nALLOWED_CHANNEL_IDS={channels}\n"
-        "OLLAMA_MODEL=llama3.2:3b\nOLLAMA_IMAGE=ollama/ollama:0.40.12@sha256:20d1bbfbabe1c97ba4b16301f08a20d8484bcf77047742a3cb71c613d8e12d0b\n"
+        f"OLLAMA_MODEL={existing.get('OLLAMA_MODEL', 'llama3.2:3b')}\n"
+        f"OLLAMA_IMAGE={existing.get('OLLAMA_IMAGE', 'ollama/ollama:0.40.12@sha256:20d1bbfbabe1c97ba4b16301f08a20d8484bcf77047742a3cb71c613d8e12d0b')}\n"
+        + "".join(f"{key}={existing[key]}\n" for key in ("OLLAMA_MEMORY_LIMIT", "OLLAMA_CPU_LIMIT") if key in existing)
     )
-    env = project / ".env"
     descriptor = os.open(env, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
         stream.write(config)

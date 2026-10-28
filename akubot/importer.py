@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .privacy import sanitize_example
+from .channel_policy import ChannelPolicy
 
 
 @dataclass(frozen=True)
@@ -51,7 +52,7 @@ def records(path: Path):
     yield from data
 
 
-def prepare(root: Path, output: Path, channel_ids: set[str], owner_id: str) -> tuple[int, int]:
+def prepare(root: Path, output: Path, channel_ids: set[str], owner_id: str, policy: ChannelPolicy) -> tuple[int, int]:
     if not channel_ids or not all(value.isdecimal() for value in channel_ids):
         raise ValueError("Select at least one numeric --channel-id explicitly.")
     if not owner_id.isdecimal():
@@ -60,6 +61,18 @@ def prepare(root: Path, output: Path, channel_ids: set[str], owner_id: str) -> t
     selected = [channel for channel in channels if channel.channel_id in channel_ids]
     if {channel.channel_id for channel in selected} != channel_ids:
         raise ValueError("One or more selected channel IDs are absent from the export.")
+    if any(not policy.allows(channel.channel_id) for channel in selected):
+        raise ValueError("NSFW channels and channels with unknown age-restriction status cannot be imported.")
+    for channel in selected:
+        metadata_file = channel.file.parent / "channel.json"
+        if metadata_file.is_file():
+            if metadata_file.is_symlink():
+                raise ValueError("Channel metadata cannot be a symlink.")
+            metadata = json.loads(metadata_file.read_text(encoding="utf-8-sig"))
+            if isinstance(metadata, dict) and (
+                metadata.get("nsfw") is True or "nsfw" in str(metadata.get("name", "")).casefold()
+            ):
+                raise ValueError("The export marks a selected channel as NSFW. It cannot be imported.")
     # Never overwrite the source or a previous review file.
     if root.resolve() == output.resolve() or root.resolve() in output.resolve().parents:
         raise ValueError("Save review candidates outside the source export directory.")
@@ -91,7 +104,7 @@ def prepare(root: Path, output: Path, channel_ids: set[str], owner_id: str) -> t
                         skipped += 1
                         continue
                     seen.add(text)
-                    stream.write(json.dumps({"text": text}, ensure_ascii=False) + "\n")
+                    stream.write(json.dumps({"text": text, "source_channel_id": channel.channel_id}, ensure_ascii=False) + "\n")
     except Exception:
         # Do not leave a partially prepared file looking complete after an error.
         # Existing files are never removed when exclusive creation fails.
@@ -101,7 +114,7 @@ def prepare(root: Path, output: Path, channel_ids: set[str], owner_id: str) -> t
     return len(seen), skipped
 
 
-def read_reviewed(path: Path) -> list[str]:
+def read_reviewed(path: Path, policy: ChannelPolicy) -> list[str]:
     if path.stat().st_size > 20_000_000:
         raise ValueError("The reviewed file exceeds 20 MB.")
     texts = []
@@ -113,8 +126,10 @@ def read_reviewed(path: Path) -> list[str]:
                 row = json.loads(line)
             except ValueError:
                 raise ValueError(f"Invalid JSON on line {line_number} of the reviewed file.") from None
-            if not isinstance(row, dict) or set(row) != {"text"} or not isinstance(row["text"], str) or not 2 <= len(row["text"]) <= 350:
-                raise ValueError(f"Line {line_number} must contain only a text field of 2 to 350 characters.")
+            if not isinstance(row, dict) or set(row) != {"text", "source_channel_id"} or not isinstance(row["text"], str) or not 2 <= len(row["text"]) <= 350:
+                raise ValueError(f"Line {line_number} needs text and source_channel_id fields from the preparation step.")
+            if not isinstance(row["source_channel_id"], str) or not policy.allows(row["source_channel_id"]):
+                raise ValueError("A reviewed example comes from an NSFW or unverified channel.")
             texts.append(sanitize_example(row["text"]))
     return texts
 

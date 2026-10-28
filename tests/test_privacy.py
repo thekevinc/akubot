@@ -11,11 +11,13 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import aiohttp
 import discord
 
+from akubot.channel_policy import ChannelPolicy, snapshot
 from akubot.bot import AkuClient, in_scope
 from akubot.config import ConfigurationError, Persona, Settings, local_model_url
 from akubot.importer import discover, prepare, read_reviewed
@@ -103,6 +105,7 @@ class ImportTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.export = self.root / "export"
+        self.policy = ChannelPolicy(snapshot("1", [{"id": "123", "type": 0, "nsfw": False}, {"id": "456", "type": 0, "nsfw": False}]))
         channel = self.export / "Messages" / "c123"
         channel.mkdir(parents=True)
         (channel / "messages.json").write_text(json.dumps([
@@ -117,23 +120,23 @@ class ImportTests(unittest.TestCase):
 
     def test_explicit_selection_and_redaction(self):
         output = self.root / "review.jsonl"
-        kept, skipped = prepare(self.export, output, {"123"}, "7")
+        kept, skipped = prepare(self.export, output, {"123"}, "7", self.policy)
         self.assertEqual((kept, skipped), (2, 2))
         text = output.read_text()
         for private in ("person@example.com", "https://example.com/private", "123456789012345678", "555-123-4567", "FRIENDS_PRIVATE_TEXT"):
             self.assertNotIn(private, text)
-        self.assertEqual(len(read_reviewed(output)), 2)
+        self.assertEqual(len(read_reviewed(output, self.policy)), 2)
 
     def test_requires_channel_selection_and_preserves_existing_output(self):
         output = self.root / "review.jsonl"
         with self.assertRaises(ValueError):
-            prepare(self.export, output, set(), "7")
+            prepare(self.export, output, set(), "7", self.policy)
         output.write_text("existing")
         with self.assertRaises(FileExistsError):
-            prepare(self.export, output, {"123"}, "7")
+            prepare(self.export, output, {"123"}, "7", self.policy)
         self.assertEqual(output.read_text(), "existing")
         with self.assertRaises(ValueError):
-            prepare(self.export, self.export / "review.jsonl", {"123"}, "7")
+            prepare(self.export, self.export / "review.jsonl", {"123"}, "7", self.policy)
 
     def test_csv_and_no_symlink_escape(self):
         csv_channel = self.export / "Messages" / "c456"
@@ -143,29 +146,68 @@ class ImportTests(unittest.TestCase):
         linked.symlink_to(csv_channel, target_is_directory=True)
         self.assertEqual({item.channel_id for item in discover(self.export)}, {"123", "456"})
         output = self.root / "csv-review.jsonl"
-        self.assertEqual(prepare(self.export, output, {"456"}, "7")[0], 1)
-        self.assertEqual(read_reviewed(output), ["yeah, okay"])
+        self.assertEqual(prepare(self.export, output, {"456"}, "7", self.policy)[0], 1)
+        self.assertEqual(read_reviewed(output, self.policy), ["yeah, okay"])
 
     def test_partial_output_removed_on_invalid_input(self):
         target = self.export / "Messages" / "c123" / "messages.json"
         target.write_text("{invalid json")
         output = self.root / "review.jsonl"
         with self.assertRaises(ValueError):
-            prepare(self.export, output, {"123"}, "7")
+            prepare(self.export, output, {"123"}, "7", self.policy)
         self.assertFalse(output.exists())
 
     def test_reviewed_file_rejects_embedded_metadata(self):
         output = self.root / "approved.jsonl"
         output.write_text(json.dumps({"text": "hello", "author_id": "7"}))
         with self.assertRaises(ValueError):
-            read_reviewed(output)
+            read_reviewed(output, self.policy)
 
     def test_unknown_author_metadata_is_not_treated_as_owner(self):
         target = self.export / "Messages" / "c123" / "messages.json"
         target.write_text(json.dumps([{"Contents": "PRIVATE_OTHER_AUTHOR", "author": {"name": "someone"}}]))
         output = self.root / "review.jsonl"
-        self.assertEqual(prepare(self.export, output, {"123"}, "7"), (0, 1))
+        self.assertEqual(prepare(self.export, output, {"123"}, "7", self.policy), (0, 1))
         self.assertEqual(output.read_text(), "")
+
+    def test_nsfw_unknown_and_changed_channel_status_are_rejected(self):
+        output = self.root / "review.jsonl"
+        for channels in ([{"id": "123", "type": 0, "nsfw": True}], []):
+            policy = ChannelPolicy(snapshot("1", channels))
+            with self.assertRaisesRegex(ValueError, "NSFW"):
+                prepare(self.export, output, {"123"}, "7", policy)
+            self.assertFalse(output.exists())
+        prepare(self.export, output, {"123"}, "7", self.policy)
+        updated = ChannelPolicy(snapshot("1", [{"id": "123", "type": 0, "nsfw": True}]))
+        with self.assertRaisesRegex(ValueError, "NSFW"):
+            read_reviewed(output, updated)
+
+    def test_historical_export_nsfw_flag_also_excludes_channel(self):
+        metadata = self.export / "Messages" / "c123" / "channel.json"
+        metadata.write_text(json.dumps({"nsfw": True}))
+        with self.assertRaisesRegex(ValueError, "NSFW"):
+            prepare(self.export, self.root / "review.jsonl", {"123"}, "7", self.policy)
+
+
+class ChannelPolicyTests(unittest.TestCase):
+    def test_flags_names_categories_and_unknown_status(self):
+        policy = ChannelPolicy(snapshot("1", [
+            {"id": "1", "type": 4, "name": "NSFW category"},
+            {"id": "2", "type": 0, "name": "normal", "parent_id": "1", "nsfw": False},
+            {"id": "3", "type": 0, "name": "normal", "nsfw": False},
+            {"id": "4", "type": 0, "name": "nsfw-chat", "nsfw": False},
+            {"id": "5", "type": 0, "name": "unknown"},
+        ]))
+        self.assertTrue(policy.allows("3"))
+        for channel_id in ("1", "2", "4", "5", "missing"):
+            self.assertFalse(policy.allows(channel_id))
+
+    def test_expired_missing_and_future_metadata_rejected(self):
+        now = datetime.now(timezone.utc)
+        for value in ({}, {"version": 1, "source": "discord-api", "verified_at": (now-timedelta(days=2)).isoformat(), "channels": {}},
+                      {"version": 1, "source": "discord-api", "verified_at": (now+timedelta(days=1)).isoformat(), "channels": {}}):
+            with self.assertRaises(ValueError):
+                ChannelPolicy(value, now=now)
 
 
 class ResponderTests(unittest.IsolatedAsyncioTestCase):
@@ -413,6 +455,18 @@ class SetupTests(unittest.TestCase):
             self.assertNotIn(token, output.getvalue())
             self.assertEqual((private / "secrets/discord_token.txt").read_text(), token)
             self.assertEqual((private / "secrets/discord_token.txt").stat().st_mode & 0o777, 0o600)
+
+    def test_rerunning_setup_preserves_downloaded_model_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, private = root / "project", root / "private"
+            (project / "config").mkdir(parents=True)
+            (project / "config/persona.json").write_text((ROOT / "config/persona.json").read_text())
+            (project / ".env").write_text("OLLAMA_MODEL=llama3.1:8b\nOLLAMA_CPU_LIMIT=4\n")
+            self.setup.initialize(private, "7", "1", "10", "FAKE_TOKEN_" + "x"*40, project=project)
+            self.assertIn("OLLAMA_MODEL=llama3.1:8b", (project / ".env").read_text())
+            self.assertIn("OLLAMA_CPU_LIMIT=4", (project / ".env").read_text())
+
 
 
 if __name__ == "__main__":

@@ -24,13 +24,15 @@ Read [SECURITY.md](SECURITY.md) for the security boundaries.
 
 The setup script generates an invitation link with View Channels, Send Messages, Read Message History (needed for Discord replies), and Send Messages in Threads. It does not request Administrator. The bot never uses the history permission to fetch surrounding messages. Nickname it **aku** in your server if desired.
 
+For setup with fewer manual IDs, after creating the application run `python3 scripts/connect_discord.py --guild-id YOUR_SERVER_ID` from WSL. It prompts for the token with hidden input, discovers the application and its personal owner, and generates an invitation for that server. Open the invitation yourself. If the bot is not installed yet, rerun the same command with `--refresh` after installing it. On Windows use `py -3` instead of `python3`. This helper reads application and channel metadata only, never messages, and preserves a model selection already configured locally.
+
 If you have an old bot application later, it can be reused with a fresh bot token. Stop any previous process using that application before starting this one.
 
 ## 2. Prepare your computer
 
 Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and [Python](https://www.python.org/downloads/) if needed. On Windows, use Docker's WSL 2 backend. A reasonable starting point is at least 8 GB of system RAM, with enough memory assigned to Docker for the 6 GB model-service limit plus the bot and operating system. No GPU is required for the initial CPU setup; speed varies.
 
-Keep the checkout outside OneDrive, for example `C:\Users\YOUR_NAME\Projects\akubot`. Open a terminal in that folder and run:
+Keep the checkout outside OneDrive, for example `~/workspace/akubot` in WSL. Open a terminal in that folder and use the token helper above, or the manual-ID setup:
 
 ```powershell
 py -3 scripts/setup.py
@@ -96,6 +98,8 @@ You can initially edit `config/persona.json` **inside your private storage folde
 
 For message examples, request your [official Discord data package](https://support.discord.com/hc/en-us/articles/360004957991-Your-Discord-Data-Package). Unzip it locally into `imports/discord-export` inside private storage. The importer supports the official outgoing-message JSON and older CSV layout. It does not scrape Discord, fetch attachments, or reconstruct missing conversation partners' messages.
 
+**NSFW channels are excluded.** Before each import session, refresh the channel metadata using `python3 scripts/connect_discord.py --guild-id YOUR_SERVER_ID --refresh`. The resulting private channel policy expires after 24 hours. The importer rejects age-restricted channels, channels or parent categories named NSFW, and channels whose age-restriction status cannot be verified. Deleted channels, DMs, and unverified threads are excluded. An NSFW flag in the export also blocks import. Current Discord metadata cannot establish every historical channel setting, so review remains necessary.
+
 List available channel IDs without displaying message content:
 
 ```sh
@@ -108,7 +112,7 @@ Use the export's local index to identify channels. Select each source channel ex
 docker compose run --rm --no-deps tools prepare-export /imports/discord-export --owner-id 111111111111111111 --channel-id 222222222222222222 --output /review/candidates.jsonl
 ```
 
-The script replaces some obvious emails, links, tokens, mentions, and number strings. **Automatic redaction cannot identify every secret or private story.** Open `review/candidates.jsonl` in private storage and manually remove names, confidential facts, quotes from friends, and anything unsuitable for every enabled server. Keep only the lines you approve in `review/approved.jsonl`. A few hundred varied, representative messages are a useful first evaluation set.
+The script replaces some obvious emails, links, tokens, mentions, and number strings. **Automatic redaction cannot identify every secret or private story.** Open `review/candidates.jsonl` in private storage and manually remove names, confidential facts, quotes from friends, and anything unsuitable for every enabled server. Keep only the lines you approve in `review/approved.jsonl`, retaining each line's `text` and `source_channel_id` fields. Loading checks the channel policy again, so a newly excluded channel cannot enter the example database through an earlier candidate file. A few hundred varied, representative messages are a useful first evaluation set.
 
 ```sh
 docker compose run --rm --no-deps tools load-examples /review/approved.jsonl --reviewed

@@ -7,4 +7,5 @@
 - Keep bot access limited to configured servers and channels. Owner controls must use numeric Discord identity checks.
 - Never log tokens, message bodies, model prompts or replies, or raw exceptions containing these values.
 - Use synthetic test data. Never upload personal messages or credentials to GitHub.
+- Exclude NSFW channels from personality data. Imports require recent verified channel metadata; unknown age-restriction status must fail closed.
 
