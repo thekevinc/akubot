@@ -52,12 +52,14 @@ class Worker:
         self.stop = True
 
     def wait_before_loading(self):
+        if self.control.desired() == 'stopped':
+            raise StopRequested()
         while self.control.desired() == 'paused':
             self.emit('paused')
-            if self.stop:
+            if self.stop or self.control.desired() == 'stopped':
                 raise StopRequested()
             time.sleep(.5)
-        if self.stop:
+        if self.stop or self.control.desired() == 'stopped':
             raise StopRequested()
 
     def prepare(self):
@@ -88,7 +90,7 @@ class Worker:
             data[split] = []
             with (self.dataset / f'{split}.jsonl').open() as stream:
                 for line in stream:
-                    if self.stop:
+                    if self.stop or self.control.desired() == 'stopped':
                         raise StopRequested()
                     if self.control.desired() == 'paused':
                         self.wait_before_loading()
@@ -174,10 +176,11 @@ class Worker:
         return saved
 
     def safe_point(self):
-        if self.stop or self.control.desired() == 'paused':
-            self.save('pausing')
+        desired = self.control.desired()
+        if self.stop or desired in {'paused', 'stopped'}:
+            self.save('stopping' if desired == 'stopped' else 'pausing')
             self.unload()
-            if self.stop:
+            if self.stop or self.control.desired() == 'stopped':
                 raise StopRequested()
             self.wait_before_loading()
             self.load()
@@ -205,7 +208,7 @@ class Worker:
         self.model.eval()
         with (self.model.disable_adapter() if baseline else contextlib.nullcontext()), torch.no_grad(), self.autocast():
             for offset in range(0, len(rows), self.config['batch_size']):
-                if self.stop or self.control.desired() == 'paused':
+                if self.stop or self.control.desired() in {'paused', 'stopped'}:
                     self.model.train()
                     return None
                 payload = self.payload(rows[offset:offset + self.config['batch_size']])
@@ -343,7 +346,7 @@ class Worker:
             data = self.prepare()
             self.train(data)
         except StopRequested:
-            self.emit('interrupted')
+            self.emit('stopped' if self.control.desired() == 'stopped' else 'interrupted')
         except Exception as error:
             self.emit('failed', error_code=type(error).__name__)
             raise

@@ -21,11 +21,14 @@ def checked(args, **kwargs):
 
 
 def container_state():
-    result = subprocess.run(['docker', 'inspect', '--format', '{{.State.Status}}', CONTAINER],
+    result = subprocess.run(['docker', 'inspect', '--format', '{{json .State.Status}}|{{json (index .Config.Labels "io.akubot.training.run")}}', CONTAINER],
                             capture_output=True, text=True)
     if result.returncode:
         return None
-    return result.stdout.strip()
+    status, label = result.stdout.strip().split('|', 1)
+    if json.loads(label) != RUN_ID:
+        raise ValueError('A different container uses the training name. It was left unchanged.')
+    return json.loads(status)
 
 
 def prepare(root):
@@ -137,6 +140,7 @@ def start(root, recover=False):
     # A clean Docker restart is explicitly recovered, never an automatic restart loop.
     control.set_desired('running')
     command = ['docker', 'run', '-d', '--name', CONTAINER, '--user', f'{os.getuid()}:{os.getgid()}',
+               '--label', 'io.akubot.training.run=' + RUN_ID,
                '--network', 'none', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
                '--init', '--restart', 'no', '--stop-timeout', '180', '--gpus', '1',
                '--tmpfs', '/tmp:size=1g,mode=1777,nosuid', '--shm-size', '512m', '--memory', '12g',
@@ -154,7 +158,7 @@ def start(root, recover=False):
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['prepare', 'build', 'start', 'pause', 'resume', 'status'])
+    parser.add_argument('action', choices=['prepare', 'build', 'start', 'pause', 'resume', 'stop', 'status'])
     parser.add_argument('--private-dir', type=Path, default=Path.home() / '.local/share/akubot')
     args = parser.parse_args()
     root = args.private_dir.expanduser().resolve()
@@ -168,9 +172,9 @@ def main():
         start(root, recover=args.action == 'resume')
     else:
         control = TrainingControl(root / 'data/training-control' / RUN_ID)
-        if args.action == 'pause':
-            control.request('pause')
-            print('Pause requested. Wait for Paused in the dashboard before stopping Docker.')
+        if args.action in {'pause', 'stop'}:
+            control.request(args.action)
+            print('Request saved. Wait for Paused or Stopped in the dashboard before stopping Docker.')
         else:
             result = control.status()
             result['container_state'] = container_state()

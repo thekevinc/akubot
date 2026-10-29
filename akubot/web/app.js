@@ -249,24 +249,34 @@ function trainingTime(seconds) {
   return `${(seconds / 3600).toFixed(1)} hours`;
 }
 function renderTraining(data) {
-  const labels = { not_started: "Not prepared", ready: "Ready to start", preparing: "Preparing messages", loading: "Loading model", training: "Training", checkpointing: "Saving checkpoint", pausing: "Saving before pause", paused: "Paused", validating: "Checking held-out messages", exporting: "Exporting model", completed: "Training complete", failed: "Worker stopped", interrupted: "Interrupted", unavailable: "Status unavailable" };
-  const offline = !data.worker_online && !["ready", "not_started", "completed"].includes(data.state);
+  const labels = { not_started: "Not prepared", ready: "Ready to start", preparing: "Preparing messages", loading: "Loading model", training: "Training", checkpointing: "Saving checkpoint", pausing: "Saving before pause", paused: "Paused", validating: "Checking held-out messages", exporting: "Exporting model", completed: "Training complete", failed: "Worker stopped", interrupted: "Interrupted", unavailable: "Status unavailable", stopping: "Saving before stop", stopped: "Stopped" };
+  const offline = !data.worker_online && !["ready", "not_started", "completed", "stopped"].includes(data.state) && !data.container_running;
   const pendingPause = data.worker_online && data.desired === "paused" && data.state !== "paused";
-  text("#training-state", pendingPause ? "Pause requested" : offline ? "Worker offline" : labels[data.state] || "Checking");
+  const pendingStop = (data.worker_online || data.container_running) && data.desired === "stopped";
+  text("#training-state", data.launch_pending ? "Starting training" : pendingStop ? "Stop requested" : pendingPause ? "Pause requested" : offline ? "Worker offline" : labels[data.state] || "Checking");
   const percent = data.total_steps ? Math.min(100, 100 * data.step / data.total_steps) : 0;
   text("#training-percent", `${percent.toFixed(1)}%`);
   $("#training-progress").value = percent;
   text("#training-steps", `${compact(data.step)} / ${compact(data.total_steps)} steps`);
-  let detail = data.state === "ready" ? "Prepared and stopped. Launch the WSL command below when you are ready." : data.state === "completed" ? "Training is complete. Your existing bot model stays selected until you import and choose the new model." : offline ? "The worker is not running. Use the WSL resume command below to recover the latest complete checkpoint." : data.state === "paused" ? "Progress saved. GPU memory released. Resume when ready." : pendingPause ? "Finishing the current safe step and saving progress. Wait for Paused before stopping Docker." : data.state === "preparing" ? `${compact(data.prepared_examples)} messages tokenized. No training steps yet.` : data.state === "validating" ? "Checking messages that were kept out of training. Validation does not advance the step count." : data.state === "exporting" ? "Saving the final adapter and merged model. The final training checkpoint is already safe." : "Learning from the prepared archive. Progress is saved regularly.";
+  let detail = data.state === "ready" ? "Prepared and stopped. Choose Start training when you are ready." : data.state === "completed" ? "Training is complete. Your existing bot model stays selected until you import and choose the new model." : offline ? "The worker is not running. Choose Start training to recover the latest complete checkpoint." : data.state === "paused" ? "Progress saved. GPU memory released. Resume when ready." : pendingPause ? "Finishing the current safe step and saving progress. Wait for Paused before stopping Docker." : data.state === "preparing" ? `${compact(data.prepared_examples)} messages tokenized. No training steps yet.` : data.state === "validating" ? "Checking messages that were kept out of training. Validation does not advance the step count." : data.state === "exporting" ? "Saving the final adapter and merged model. The final training checkpoint is already safe." : "Learning from the prepared archive. Progress is saved regularly.";
+  if (data.state === "stopped") detail = "Progress saved and worker closed. Start training will recover the latest checkpoint.";
+  if (data.container_running && !data.worker_online) detail = "The worker is starting up. Its first progress update will appear shortly.";
+  if (data.launch_pending) detail = "Start requested. The local launcher is preparing the background worker.";
+  if (pendingStop) detail = "Finishing the current safe step and saving progress, then closing the worker. Wait for Stopped.";
+  if (data.launcher_error) detail += ` Launcher: ${data.launcher_error}. Use the WSL fallback below if needed.`;
   if (data.error_code) detail += ` Error type: ${data.error_code}. Recovery keeps your checkpoints.`;
   text("#training-detail", detail);
-  text("#training-eta", data.state === "completed" ? "Finished" : data.state === "paused" ? "Paused" : trainingTime(data.eta_seconds));
+  text("#training-eta", data.state === "completed" ? "Finished" : data.state === "paused" ? "Paused" : data.state === "stopped" ? "Stopped" : trainingTime(data.eta_seconds));
   text("#training-examples", compact(data.train_examples));
   text("#training-validation", `${compact(data.validation_examples)} held out for validation`);
   text("#training-checkpoint", data.last_checkpoint_step === undefined ? "None yet" : `Step ${compact(data.last_checkpoint_step)}`);
   text("#training-checkpoint-age", data.last_checkpoint_at ? `Saved ${new Date(data.last_checkpoint_at * 1000).toLocaleTimeString()}` : "Every 250 steps or 5 minutes");
   text("#training-loss", Number.isFinite(data.loss) ? data.loss.toFixed(3) : "Waiting");
   text("#training-validation-loss", Number.isFinite(data.validation_loss) ? `Held-out loss ${data.validation_loss.toFixed(3)}` : "Held-out results appear during training");
+  $("#training-start").disabled = !data.can_start;
+  $("#training-stop").disabled = !data.can_stop;
+  text("#training-start", data.step > 0 ? "Start / recover" : "Start training");
+  text("#training-launcher", data.launcher_online ? "Local launcher online" : "Local launcher offline");
   $("#training-pause").disabled = !data.can_pause;
   $("#training-resume").disabled = !data.can_resume;
   const points = (data.recent || []).filter((p) => Number.isFinite(p.loss));
@@ -285,13 +295,13 @@ async function refreshTraining() {
   if (trainingPolling) return;
   trainingPolling = true;
   try { renderTraining(await api("/api/training")); }
-  catch (error) { text("#training-state", "Connection interrupted"); text("#training-detail", error.message); $("#training-pause").disabled = true; $("#training-resume").disabled = true; }
+  catch (error) { text("#training-state", "Connection interrupted"); text("#training-detail", error.message); for (const action of ["start", "stop", "pause", "resume"]) $(`#training-${action}`).disabled = true; }
   finally { trainingPolling = false; }
 }
-for (const action of ["pause", "resume"]) {
+for (const action of ["start", "stop", "pause", "resume"]) {
   $(`#training-${action}`).addEventListener("click", async () => {
-    $("#training-pause").disabled = true; $("#training-resume").disabled = true;
-    try { renderTraining(await send("/api/training/control", { action })); toast(action === "pause" ? "Pause requested. Saving at the next safe step." : "Resume requested. Loading the saved checkpoint."); }
+    for (const action of ["start", "stop", "pause", "resume"]) $(`#training-${action}`).disabled = true;
+    try { renderTraining(await send("/api/training/control", { action })); toast({ start: "Start requested. Launching the background worker.", stop: "Stop requested. Saving before the worker closes.", pause: "Pause requested. Saving at the next safe step.", resume: "Resume requested. Loading the saved checkpoint." }[action]); }
     catch (error) { toast(error.message, true); await refreshTraining(); }
   });
 }

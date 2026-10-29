@@ -169,7 +169,7 @@ class Dashboard:
 
     async def training_command(self, request):
         body = await request.json()
-        if not isinstance(body, dict) or set(body) != {"action"} or body["action"] not in ("pause", "resume"):
+        if not isinstance(body, dict) or set(body) != {"action"} or body["action"] not in ("start", "stop", "pause", "resume"):
             raise ValueError
         return web.json_response(await asyncio.to_thread(self.training.request, body["action"]))
 

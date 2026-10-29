@@ -53,7 +53,7 @@ class TrainingControlTests(unittest.TestCase):
         (self.root/'command.json').symlink_to(self.root/'elsewhere')
         with self.assertRaises(ValueError): self.control.set_desired('running')
     def test_terminal_and_export_states_are_not_pausable(self):
-        for phase in ('exporting','completed','failed','interrupted','ready'):
+        for phase in ('exporting','completed','failed','interrupted','ready','stopped'):
             self.running(phase)
             self.assertFalse(self.control.status()['can_pause'])
 
@@ -78,7 +78,7 @@ class TrainingEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.request('GET','/api/training')).status,200)
         for headers in ({'Origin':'http://evil.example'},{'Host':'evil.example'},{'X-Aku-Local':''}):
             self.assertEqual((await self.request('POST','/api/training/control',{'action':'pause'},headers)).status,403)
-        for body in ({'action':'start'},{'action':'resume','path':'/tmp/evil'},{'action':[]},[]):
+        for body in ({'action':'arbitrary'},{'action':'resume','path':'/tmp/evil'},{'action':[]},[]):
             self.assertEqual((await self.request('POST','/api/training/control',body)).status,400)
         response=await self.request('POST','/api/training/control',{'action':'resume'})
         self.assertEqual(response.status,409)
@@ -95,3 +95,24 @@ class TrainingEndpointTests(unittest.IsolatedAsyncioTestCase):
         response=await self.request('POST','/api/training/control',{'action':'resume'})
         self.assertEqual(response.status,200)
         self.assertEqual(control.desired(),'running')
+
+    async def test_start_and_stop_endpoints_only_write_fixed_requests(self):
+        control = self.dashboard.training
+        atomic_json(control.root/'status.json', {'state':'ready','step':0,'total_steps':10})
+        atomic_json(control.root/'launcher.json', {'version':1,'at':time.time(),'alive':True,
+                    'worker_state':'missing','job_prepared':True})
+        response = await self.request('POST','/api/training/control',{'action':'start'})
+        self.assertEqual(response.status,200)
+        request = json.loads((control.root/'launch-request.json').read_text())
+        self.assertEqual(set(request),{'version','id','action','at'})
+        self.assertTrue(json.loads(response.text)['launch_pending'])
+        self.assertEqual((await self.request('POST','/api/training/control',{'action':'start'})).status,409)
+        atomic_json(control.root/'status.json', {'state':'training','step':3,'total_steps':10})
+        atomic_json(control.root/'heartbeat.json', {'at':time.time(),'alive':True})
+        atomic_json(control.root/'launcher.json', {'version':1,'at':time.time(),'alive':True,
+                    'worker_state':'running','job_prepared':True,'last_request_id':request['id'],'last_result':'started'})
+        control.set_desired('running')
+        response = await self.request('POST','/api/training/control',{'action':'stop'})
+        self.assertEqual(response.status,200)
+        self.assertEqual(control.desired(),'stopped')
+        self.assertEqual(json.loads(response.text)['state'],'training')

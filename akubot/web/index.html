@@ -73,7 +73,7 @@
         <div class="training-progress-heading"><strong id="training-percent">0%</strong><span id="training-steps">Waiting for job details</span></div>
         <progress id="training-progress" value="0" max="100" aria-label="Training progress"></progress>
         <p id="training-detail" class="muted-text" aria-live="polite">Checking the background worker.</p>
-        <div class="training-actions"><button id="training-pause" class="button quiet" disabled>Pause training</button><button id="training-resume" class="button primary" disabled>Resume training</button><span class="small muted-text">Pause saves a checkpoint and releases GPU memory.</span></div>
+        <div class="training-actions"><button id="training-start" class="button primary" disabled>Start training</button><button id="training-stop" class="button quiet" disabled>Stop training</button><button id="training-pause" class="button quiet" disabled>Pause training</button><button id="training-resume" class="button primary" disabled>Resume training</button><span class="small muted-text">Stop saves and closes the worker. Pause keeps it ready to resume.</span></div>
       </article>
       <div class="stats-grid training-stats">
         <article class="stat-card"><span class="stat-label">Time remaining</span><strong id="training-eta">Waiting</strong><span class="stat-foot">Estimate updates while training</span></article>
@@ -82,13 +82,11 @@
         <article class="stat-card"><span class="stat-label">Training loss</span><strong id="training-loss">Waiting</strong><span class="stat-foot" id="training-validation-loss">Lower is better on held-out messages</span></article>
       </div>
       <article class="card training-chart-card"><div class="card-heading"><div><h2>Learning progress</h2><p>Recent training loss. Short-term bumps are normal.</p></div><span class="subtle-label">METRICS ONLY</span></div><canvas id="training-chart" width="900" height="180" role="img" aria-label="Recent training loss. Exact latest value is shown above."></canvas><p class="small muted-text" id="training-chart-note">The curve appears after training begins.</p></article>
-      <article class="card training-start"><div class="card-heading"><div><h2>Start once from WSL</h2><p>The worker runs in the background, even after you close this dashboard or terminal.</p></div></div>
-        <pre><code>cd ~/workspace/akubot
-python3 training/run_full.py start</code></pre>
-        <p class="small muted-text">After a Docker restart, computer restart, or crash, recover with:</p>
-        <pre><code>cd ~/workspace/akubot
-python3 training/run_full.py resume</code></pre>
-        <p class="small muted-text">The dashboard can pause and resume a running worker. Recovery after it exits uses the WSL command above. Checkpoints retain the optimizer, message order, and random state. An abrupt shutdown loses only work since the latest complete checkpoint.</p>
+      <article class="card training-start"><div class="card-heading"><div><h2>Run it from here</h2><p>The training worker runs in the background after you close this tab.</p></div><span id="training-launcher" class="pill muted">Checking launcher</span></div>
+        <p class="small muted-text"><strong>Start</strong> launches the prepared job or recovers its latest complete checkpoint. <strong>Stop</strong> saves at the next safe step, then closes the worker. <strong>Pause</strong> saves and releases GPU memory while keeping the worker open. <strong>Resume</strong> continues a paused worker.</p>
+        <p class="small muted-text">Wait for Stopped before shutting down Docker. After an unexpected shutdown, Start recovers the latest complete checkpoint. Work since that checkpoint may need to be repeated.</p>
+        <details><summary>WSL fallback commands</summary><p class="small muted-text">If the local launcher is offline, run this once in WSL:</p><pre><code>cd ~/workspace/akubot
+python3 training/launcher.py --install</code></pre><p class="small muted-text">You can also start or recover the job directly:</p><pre><code>python3 training/run_full.py resume</code></pre></details>
         <div class="soft-note"><strong>Before starting</strong><p>Allow roughly 18–24 hours for one pass, plus preparation and final validation. Training needs around 19 GB of free GPU memory. Pause Discord replies and avoid loading another large model while it runs. The launcher leaves your existing services alone.</p></div>
         <p class="small muted-text">Secret and DMs are excluded. Original message strings, including links, are retained. Long messages are limited to 512 tokens during training. This teaches style from your outgoing messages; the archive has no surrounding conversation. Training finishes with a new adapter and merged model, ready for a separate Ollama import.</p>
       </article>

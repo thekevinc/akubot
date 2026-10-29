@@ -77,9 +77,11 @@ def main():
         time.sleep(.2);assert c2.status()['step']==paused['step']
         c2.request('resume')
         wait_for(c2,lambda s:s['state']=='training' and s['step']>=paused['step']+2,third)
-        third.terminate()
+        c2.request('stop')
         assert third.wait(timeout=30)==0,c2.status()
-        assert c2.status()['state']=='interrupted'
+        assert c2.status()['state']=='stopped'
+        assert c2.status()['last_checkpoint_step']==c2.status()['step']
+        c2.set_desired('running')
         fourth=launch(resumed)
         assert fourth.wait(timeout=120)==0,c2.status()
         assert c2.status()['state']=='completed'
@@ -92,7 +94,7 @@ def main():
             state=torch.load(latest/'state.pt',map_location='cpu',weights_only=True)
             assert state['progress']['cursor']==640 and state['progress']['step']==160
             assert len([p for p in (run/'output/checkpoints').glob('step-*') if Checkpoints(run/'output/checkpoints',fingerprint(config))._valid(p)])<=4
-        print(json.dumps({'synthetic_recovery':'passed','exact_adapter_match':True,'tested':['SIGKILL recovery','safe pause/resume','graceful termination','partial checkpoint ignored','corrupt checkpoint fallback','fingerprint mismatch rejected','retention bounded']}))
+        print(json.dumps({'synthetic_recovery':'passed','exact_adapter_match':True,'tested':['SIGKILL recovery','safe pause/resume','dashboard Stop and restart','partial checkpoint ignored','corrupt checkpoint fallback','fingerprint mismatch rejected','retention bounded']}))
 
 
 if __name__=='__main__':

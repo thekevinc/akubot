@@ -72,17 +72,26 @@ python3 training/run_full.py start
 
 The dedicated `akubot-llama-full-training` container has no network, published ports, Discord credentials, Docker socket, or access to the bot's database. Only its private output and a narrow control mailbox are writable. It runs as your WSL user with resource limits. Closing the terminal, dashboard, or Codex does not stop it. WSL, Windows, and Docker must remain running and awake. It does not restart, unload, or reconfigure existing services. Keep roughly 19 GB of GPU memory free, and avoid loading other large models while training. An allocation failure preserves existing checkpoints for recovery.
 
-Open the dashboard's **Training** tab for step count, estimated remaining time, training and held-out loss, a recent loss curve, and the latest checkpoint. **Pause training** is a request: the worker completes the current optimizer step, saves, releases model and optimizer GPU memory, then shows Paused. During tokenization it pauses without allocating the model. During validation it cancels that validation pass, saves, and pauses. Final model export is a short non-pausable phase. Resume loads the latest checkpoint and continues. The bot's Pause replies button is independent of Pause training.
+Enable the small local launcher once to use dashboard Start/Stop:
+
+```sh
+python3 training/launcher.py --install
+```
+
+This installs an Akubot user service in `~/.config/systemd/user/akubot-training-launcher.service`. Enabling the helper does not start training. The service runs in WSL as your user, with read-only home/system files and write access limited to its private receipt folder and training mailbox. It opens no HTTP listener and accepts no executable, arguments, paths, images, or container names from the dashboard. Its only launch action invokes the fixed prepared job. Docker operations remain in the host helper, outside the dashboard container. Start requests have a short expiry, durable acknowledgments, and replay protection. A helper restart never automatically replays an acknowledged start.
+
+Open the dashboard's **Training** tab for Start/Stop, step count, estimated remaining time, training and held-out loss, a recent loss curve, and the latest checkpoint. **Start training** launches the job or recovers its latest checkpoint. **Stop training** requests a safe checkpoint and worker exit. It never force-kills or deletes checkpoints. Wait for Stopped before shutting down Docker. Stop also works while paused. **Pause training** is a request: the worker completes the current optimizer step, saves, releases model and optimizer GPU memory, then shows Paused. During tokenization it pauses without allocating the model. During validation it cancels that validation pass, saves, and pauses. Final model export is a short non-pausable phase. Resume loads the latest checkpoint and continues. The bot's Pause replies button is independent of Pause training.
 
 The controls can also be used from WSL:
 
 ```sh
 python3 training/run_full.py status
 python3 training/run_full.py pause
+python3 training/run_full.py stop
 python3 training/run_full.py resume
 ```
 
-If the computer, Docker, or worker stops, run `resume` again. It launches a new detached worker and restores the latest complete, verified checkpoint. The dashboard deliberately cannot start containers. It marks a worker offline after its heartbeat expires (up to 30 seconds), and keeps recovery instructions visible. There are no automatic restart loops.
+If the computer, Docker, or worker stops, choose Start training again, or use the `resume` command. This launches a new detached worker and restores the latest complete, verified checkpoint. Start is enabled only while the local launcher is online, Docker is available, and the prepared job is stopped. The helper verifies the fixed container's ownership label before recovery. A different container with that name is left untouched. The dashboard never receives the Docker socket. Helper and worker heartbeats expose offline status; WSL fallback commands remain available. There are no automatic training restart loops. The user service runs while your WSL user manager is available; if it is offline, run `python3 training/launcher.py --install` in WSL.
 
 Checkpoints save every 250 optimizer steps or five minutes, whichever comes first at a safe step boundary. They include the LoRA weights, optimizer state, learning-rate plan, completed step, exact shuffled message order and cursor, and Python/PyTorch/CUDA random states. Writes use temporary directories and a final checksum marker followed by an atomic rename. Partial writes are ignored; a corrupted newest checkpoint falls back to an earlier verified one. The latest three checkpoints and the best periodic validation checkpoint are retained. A changed dataset, base file, or job configuration is rejected for resume. A sudden shutdown can lose work after the last complete checkpoint. Tokenization has a separate atomic cache, so a completed preprocessing pass is reusable.
 
@@ -101,9 +110,9 @@ python3 training/install_model.py --private-dir ~/.local/share/akubot \
   --base-name llama3.1:8b --existing-base --label 'Aku full archive for Llama'
 ```
 
-The mailbox is `~/.local/share/akubot/data/training-control/llama-full-v1/`. The dashboard reads only sanitized scalar metrics and writes only Pause/Resume requests there. It does not receive dataset or checkpoint mounts. Training message bodies, prompts, and replies are never written to container logs. Keep private datasets and trained models out of GitHub.
+The mailbox is `~/.local/share/akubot/data/training-control/llama-full-v1/`. The dashboard reads only sanitized scalar metrics and writes only the four fixed training commands there. The host helper keeps its durable request receipt under `training/launcher`, outside the dashboard mount. It does not receive dataset or checkpoint mounts. Training message bodies, prompts, and replies are never written to container logs. Keep private datasets and trained models out of GitHub.
 
-The end-to-end recovery test uses a tiny, randomly initialized model and synthetic tokens. It checks exact adapter equality against uninterrupted training after forced termination and pause/resume, corrupt and incomplete checkpoint handling, fingerprint mismatch rejection, and retention bounds:
+The end-to-end recovery test uses a tiny, randomly initialized model and synthetic tokens. It checks exact adapter equality against uninterrupted training after forced termination, pause/resume, and dashboard Stop/restart, corrupt and incomplete checkpoint handling, fingerprint mismatch rejection, and retention bounds:
 
 ```sh
 docker run --rm --network none --read-only --cap-drop ALL \
