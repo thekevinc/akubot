@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 
 from aiohttp import web
 
+from .model_catalog import ModelCatalog, ModelSelectionError
 from .control import RevisionConflict, Tuning
 from dataclasses import asdict
 from .model import ModelError
@@ -58,6 +59,8 @@ async def private_boundary(request: web.Request, handler):
             return web.json_response({"error": "Expected JSON."}, status=415, headers=HEADERS)
     try:
         response = await handler(request)
+    except ModelSelectionError as error:
+        response = web.json_response({"error": str(error)}, status=400)
     except RevisionConflict as error:
         response = web.json_response({"error": str(error)}, status=409)
     except Notice as error:
@@ -81,9 +84,7 @@ class Dashboard:
         self.model_cache: dict = {}
         self.model_checked = -100.0
         self.model_lock = asyncio.Lock()
-        self.library_cache: dict = {}
-        self.library_checked = -100.0
-        self.library_count = -1
+        self.catalog = ModelCatalog(client.settings.data_dir / "model-catalog.json")
 
     @property
     def responder(self):
@@ -103,8 +104,6 @@ class Dashboard:
         app.router.add_post("/api/forget", self.forget)
         app.router.add_post("/api/warm", self.warm)
         app.router.add_post("/api/preview", self.preview)
-        app.router.add_get("/api/library", self.library)
-        app.router.add_get("/api/examples", self.examples)
         return app
 
     async def start(self, port: int) -> None:
@@ -154,7 +153,6 @@ class Dashboard:
             "bot": {"connected": ready, "gateway_ms": round(latency * 1000) if ready and 0 <= latency < 100 else None, "servers": len(self.client.settings.guild_ids), "paused_servers": paused},
             "model": await self.model_status(),
             "metrics": self.responder.metrics.snapshot(),
-            "examples": self.client.store.count(),
             "sessions": len(self.responder.memory.sessions),
             "revision": self.client.control.revision,
             "tuning": self.client.control.document()["tuning"],
@@ -162,20 +160,31 @@ class Dashboard:
 
     async def settings(self, request):
         document = self.client.control.document()
-        return web.json_response({"revision": document["revision"], "tuning": document["tuning"], "defaults": asdict(Tuning(self.client.control.tuning.model))})
+        state = await self.model_status()
+        models = self.catalog.options(state.get("installed", []), self.client.control.tuning.model)
+        return web.json_response({"revision": document["revision"], "tuning": document["tuning"], "defaults": asdict(Tuning(self.client.control.tuning.model)), "models": models})
 
     async def save_settings(self, request):
         body = await request.json()
-        if not isinstance(body, dict) or set(body) != {"revision", "tuning"}:
+        if not isinstance(body, dict) or set(body) not in ({"revision", "tuning"}, {"revision", "tuning", "selection"}):
             raise ValueError
         if not isinstance(body["tuning"], dict):
             raise ValueError
+        if "selection" in body:
+            state = await self.model_status(force=True)
+            resolved = self.catalog.resolve(body["selection"], state.get("installed", []), self.client.control.tuning.model)
+            if body["tuning"].get("model") != resolved:
+                raise ModelSelectionError("The selected base and LoRA do not match the requested model.")
+        previous_model = self.client.control.tuning.model
         if body["tuning"].get("model") != self.client.control.tuning.model:
             state = await self.model_status(force=True)
             if body["tuning"].get("model") not in state["installed"]:
                 raise ValueError
         self.client.control.update_tuning(body["revision"], body["tuning"])
         self.responder.apply_tuning()
+        if previous_model != self.client.control.tuning.model:
+            for identifier in self.client.settings.guild_ids:
+                self.responder.clear_guild(identifier)
         self.model_checked = -100
         return await self.settings(request)
 
@@ -246,18 +255,3 @@ class Dashboard:
             raise ValueError
         answer = await asyncio.wait_for(self.responder.reply(Request(0, 0, 0, body["prompt"], source="preview")), timeout=240)
         return web.json_response({"reply": answer})
-
-    async def library(self, request):
-        count = self.client.store.count()
-        if request.query.get("refresh") == "1" or count != self.library_count or time.monotonic() - self.library_checked > 60:
-            texts = self.client.store.library_texts()
-            self.library_cache = await asyncio.to_thread(self.client.store.summarize_texts, texts)
-            self.library_checked, self.library_count = time.monotonic(), count
-        return web.json_response({**self.library_cache, "total": count})
-
-    async def examples(self, request):
-        query = request.query.get("q", "")
-        offset = int(request.query.get("offset", "0"))
-        if len(query) > 150 or not 0 <= offset <= 100000:
-            raise ValueError
-        return web.json_response(self.client.store.page(query=query, offset=offset))

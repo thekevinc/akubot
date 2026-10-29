@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import AsyncMock
 
 from aiohttp.test_utils import make_mocked_request
 
@@ -48,7 +49,7 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
         self.responder = Responder(self.store, self.model, PERSONA, control=self.control)
         self.client = SimpleNamespace(
             control=self.control, store=self.store, responder=self.responder,
-            settings=SimpleNamespace(guild_ids=frozenset({1})), latency=.03,
+            settings=SimpleNamespace(guild_ids=frozenset({1}), data_dir=Path(self.temp.name)), latency=.03,
             is_ready=lambda: True,
         )
         self.dashboard = Dashboard(self.client)
@@ -95,7 +96,7 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
             {"X-Aku-Local": None},
             {"Sec-Fetch-Site": "cross-site"},
         ):
-            status, _ = await self.json_request("GET", "/api/examples", headers=headers)
+            status, _ = await self.json_request("GET", "/api/status", headers=headers)
             self.assertEqual(status, 403)
         status, _ = await self.json_request("GET", "/api/status", headers={"Origin": "http://localhost:8765"})
         self.assertEqual(status, 200)
@@ -176,22 +177,43 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
             await task
         self.assertFalse(self.responder.memory.sessions)
 
-    async def test_library_paging_literal_search_and_word_frequencies(self):
-        self.store.add_examples(["the pizza pizza rockets", "Rockets and games", "100% synthetic"])
-        status, summary = await self.json_request("GET", "/api/library")
+    async def test_removed_library_routes_do_not_delete_stored_examples(self):
+        self.store.add_examples(["synthetic retained example"])
+        for path in ("/api/library", "/api/examples"):
+            self.assertEqual((await self.json_request("GET", path))[0], 404)
+        self.assertEqual(self.store.count(), 1)
+        page = (await self.request("GET", "/")).text
+        self.assertNotIn('data-tab="library"', page)
+        self.assertNotIn('id="page-library"', page)
+
+    async def test_compatible_base_and_lora_selection_and_mismatches(self):
+        base = {"id": "smol", "label": "Smol test", "model": "smol-base:latest"}
+        adapter = {"id": "aku-v1", "label": "Aku style 1", "model": "smol-trained:latest", "base_id": "smol"}
+        self.dashboard.catalog.register(base, adapter)
+        self.model.status = AsyncMock(return_value={"available": True, "installed": [MODEL, base["model"], adapter["model"]]})
+        _, settings = await self.json_request("GET", "/api/settings")
+        self.assertEqual(len(settings["models"]["bases"]), 2)
+        tuning = {**settings["tuning"], "model": adapter["model"]}
+        incompatible = {"base_id": "ollama:" + MODEL, "adapter_id": adapter["id"]}
+        status, error = await self.json_request("PUT", "/api/settings", {"revision": 0, "tuning": tuning, "selection": incompatible})
+        self.assertEqual(status, 400)
+        self.assertIn("different base model", error["error"])
+        self.assertEqual(self.control.revision, 0)
+        selection = {"base_id": "smol", "adapter_id": adapter["id"]}
+        self.responder.memory.append((1,2,3), "synthetic prompt", "synthetic answer")
+        status, saved = await self.json_request("PUT", "/api/settings", {"revision": 0, "tuning": tuning, "selection": selection})
         self.assertEqual(status, 200)
-        counts = {entry["word"]: entry["count"] for entry in summary["words"]}
-        self.assertEqual(counts["pizza"], 2)
-        self.assertEqual(counts["rockets"], 2)
-        self.assertNotIn("the", counts)
-        status, page = await self.json_request("GET", "/api/examples?q=%25")
+        self.assertEqual(saved["models"]["selection"], selection)
+        self.assertEqual(self.control.tuning.model, adapter["model"])
+        self.assertFalse(self.responder.memory.sessions)
+        forged = {**tuning, "model": MODEL}
+        self.assertEqual((await self.json_request("PUT", "/api/settings", {"revision": 1, "tuning": forged, "selection": selection}))[0], 400)
+        missing = {"base_id": "smol", "adapter_id": "does-not-exist"}
+        self.assertEqual((await self.json_request("PUT", "/api/settings", {"revision": 1, "tuning": tuning, "selection": missing}))[0], 400)
+        tuning["model"] = base["model"]
+        status, saved = await self.json_request("PUT", "/api/settings", {"revision": 1, "tuning": tuning, "selection": {"base_id": "smol", "adapter_id": None}})
         self.assertEqual(status, 200)
-        self.assertEqual(page["total"], 1)
-        status, page = await self.json_request("GET", "/api/examples?q=%27%20OR%201%3D1")
-        self.assertEqual(status, 200)
-        self.assertEqual(page["total"], 0)
-        self.assertEqual(self.store.count(), 3)
-        self.assertEqual((await self.json_request("GET", "/api/examples?offset=-1"))[0], 400)
+        self.assertIsNone(saved["models"]["selection"]["adapter_id"])
 
     async def test_model_warm_is_bounded(self):
         started, finish = asyncio.Event(), asyncio.Event()

@@ -2,16 +2,14 @@
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const state = { tab: "overview", latest: null, tuningRevision: 0, personaRevision: 0, tuningDirty: false, personaDirty: false, tuningLoaded: false, personaLoaded: false, defaults: null, query: "", offset: 0, searchSequence: 0, library: null, polling: false };
+const state = { tab: "overview", latest: null, tuningRevision: 0, personaRevision: 0, tuningDirty: false, personaDirty: false, tuningLoaded: false, personaLoaded: false, defaults: null, models: null, polling: false };
 const titles = {
-  overview: ["Overview", "A live look at replies, model readiness, and your message library."],
+  overview: ["Overview", "A live look at replies and model readiness."],
   tuning: ["Tuning", "Make the next reply feel right. Changes stay on this computer."],
-  library: ["Message library", "Explore the reviewed messages that help Aku sound like you."],
   personality: ["Personality", "Fine-tune the voice and facts Aku can share."]
 };
 const emptyChart = $(".empty-chart").cloneNode(true);
-const emptyCloud = $(".library-empty").cloneNode(true);
-let toastTimer, searchTimer, resizeTimer;
+let toastTimer;
 
 function text(selector, value) { $(selector).textContent = String(value); }
 function duration(value) {
@@ -53,7 +51,6 @@ async function selectTab(tab) {
   try {
     if (tab === "tuning" && !state.tuningLoaded) await loadTuning();
     if (tab === "personality" && !state.personaLoaded) await loadPersona();
-    if (tab === "library") await loadLibrary();
   } catch (error) { toast(error.message, true); }
 }
 $$('[data-tab]').forEach((button) => button.addEventListener("click", () => selectTab(button.dataset.tab)));
@@ -73,7 +70,7 @@ function renderStatus(data) {
   text("#active-count", data.metrics.active ? `${data.metrics.active} in progress` : "Nothing in progress");
   const minutes = Math.floor(data.metrics.uptime_seconds / 60);
   text("#uptime", minutes < 1 ? "Session just started" : `Online for ${minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} hr ${minutes % 60} min`}`);
-  text("#nav-library-count", compact(data.examples)); text("#model-name", data.model.name);
+  text("#model-name", data.model.name);
   const modelState = data.model.warming ? "Loading" : !data.model.available ? "Unavailable" : data.model.loaded ? "Ready" : "Idle";
   text("#model-badge", modelState); $("#model-badge").className = `pill ${modelState === "Ready" ? "success" : modelState === "Idle" ? "muted" : "warning"}`;
   text("#model-caption", data.model.warming ? "Preparing the model for your next reply." : !data.model.available ? "The local model is not responding." : data.model.loaded ? "Loaded and ready to reply." : "The next reply will need to load the model.");
@@ -83,7 +80,7 @@ function renderStatus(data) {
   text("#rate-limited-count", data.metrics.counts.cooldown ? `${compact(data.metrics.counts.cooldown)} cooldown${data.metrics.counts.cooldown === 1 ? "" : "s"}` : "");
   text("#footer-status", `Updated ${clock(Date.now())}${data.bot.gateway_ms === null ? "" : ` · Discord ${data.bot.gateway_ms} ms`}`);
   renderActivity(data.metrics.recent); renderChart(data.metrics.recent);
-  if (state.tuningLoaded && !state.tuningDirty && state.tuningRevision !== data.revision) fillTuning(data.tuning, data.revision);
+  if (state.tuningLoaded && !state.tuningDirty && state.tuningRevision !== data.revision) fillTuning(data.tuning, data.revision, data.models);
   if (state.personaLoaded && !state.personaDirty && state.personaRevision !== data.revision && state.tab === "personality") loadPersona().catch(() => {});
 }
 async function refreshStatus() {
@@ -145,16 +142,46 @@ function tuningOutputs() {
   text("#max-tokens-output", `${elements.max_tokens.value} tokens`); text("#temperature-output", Number(elements.temperature.value).toFixed(2));
   const cooldown = Number(elements.cooldown_seconds.value); text("#cooldown-output", cooldown === 0 ? "Off" : `${cooldown} second${cooldown === 1 ? "" : "s"}`);
 }
-function fillTuning(tuning, revision) {
-  const form = $("#tuning-form");
-  const models = new Set([tuning.model, ...(state.latest?.model.installed || [])]);
-  $("#tune-model").replaceChildren(...[...models].map((name) => { const option = node("option", name); option.value = name; return option; }));
+function modelSelection(model) {
+  const adapter = state.models.adapters.find((entry) => entry.model === model);
+  if (adapter) return { base_id: adapter.base_id, adapter_id: adapter.id };
+  const base = state.models.bases.find((entry) => entry.model === model);
+  return base ? { base_id: base.id, adapter_id: null } : null;
+}
+function renderAdapters(adapterId = null) {
+  const baseId = $("#tune-base").value;
+  const base = state.models.bases.find((entry) => entry.id === baseId);
+  const none = node("option", "None (base model only)"); none.value = "";
+  const options = state.models.adapters.map((entry) => {
+    const matching = entry.base_id === baseId;
+    const owner = state.models.bases.find((item) => item.id === entry.base_id);
+    const option = node("option", matching ? entry.label : `${entry.label} (requires ${owner?.label || "another base"})`);
+    option.value = entry.id; option.disabled = !matching || !entry.available;
+    return option;
+  });
+  $("#tune-adapter").replaceChildren(none, ...options);
+  const selected = state.models.adapters.find((entry) => entry.id === adapterId && entry.base_id === baseId);
+  $("#tune-adapter").value = selected ? selected.id : "";
+  $("#tune-model").value = selected ? selected.model : base.model;
+  text("#adapter-help", selected ? `${selected.label} was trained for ${base.label}.` : state.models.adapters.some((entry) => entry.base_id === baseId) ? "Use the base model alone, or choose its trained style above." : "No LoRA is installed for this base. Aku style 1 needs a separate training run to work with a different base model.");
+}
+function fillTuning(tuning, revision, models = null) {
+  if (models) state.models = models;
+  if (!state.models) return;
+  const form = $("#tuning-form"), selected = modelSelection(tuning.model);
+  $("#tune-base").replaceChildren(...state.models.bases.map((entry) => {
+    const option = node("option", entry.label + (entry.available ? "" : " (unavailable)")); option.value = entry.id; option.disabled = !entry.available && entry.id !== selected?.base_id; return option;
+  }));
+  if (selected) $("#tune-base").value = selected.base_id;
+  renderAdapters(selected?.adapter_id);
   Object.entries(tuning).forEach(([name, value]) => { const input = form.elements.namedItem(name); if (input) { if (input.type === "checkbox") input.checked = value; else input.value = value; } });
   state.tuningRevision = revision; state.tuningDirty = false; state.tuningLoaded = true; tuningOutputs(); enableForm(form, true);
 }
+$("#tune-base").addEventListener("change", () => renderAdapters());
+$("#tune-adapter").addEventListener("change", () => renderAdapters($("#tune-adapter").value || null));
 async function loadTuning() {
   enableForm($("#tuning-form"), false);
-  const data = await api("/api/settings"); state.defaults = data.defaults; fillTuning(data.tuning, data.revision);
+  const data = await api("/api/settings"); state.defaults = data.defaults; fillTuning(data.tuning, data.revision, data.models);
 }
 $("#tuning-form").addEventListener("input", () => { state.tuningDirty = true; tuningOutputs(); text("#tuning-save-state", "Unsaved changes. Apply them to the next reply when ready."); });
 $("#tuning-form").addEventListener("submit", async (event) => {
@@ -164,7 +191,7 @@ $("#tuning-form").addEventListener("submit", async (event) => {
   for (const name of ["temperature", "max_tokens", "context_tokens", "cooldown_seconds", "requests_per_minute", "memory_turns", "memory_minutes"]) tuning[name] = Number(form.elements.namedItem(name).value);
   tuning.preload = form.elements.preload.checked;
   enableForm(form, false);
-  try { const data = await send("/api/settings", { revision: state.tuningRevision, tuning }, "PUT"); state.defaults = data.defaults; fillTuning(data.tuning, data.revision); toast("Settings saved. They apply to the next reply."); text("#tuning-save-state", "Saved locally. No restart needed."); await refreshStatus(); }
+  try { const data = await send("/api/settings", { revision: state.tuningRevision, tuning, selection: { base_id: $("#tune-base").value, adapter_id: $("#tune-adapter").value || null } }, "PUT"); state.defaults = data.defaults; fillTuning(data.tuning, data.revision, data.models); toast("Settings saved. They apply to the next reply."); text("#tuning-save-state", "Saved locally. No restart needed."); await refreshStatus(); }
   catch (error) { toast(error.message, true); }
   finally { enableForm(form, true); }
 });
@@ -207,61 +234,12 @@ $("#persona-form").addEventListener("submit", async (event) => {
   finally { enableForm(form, true); }
 });
 $("#forget-button").addEventListener("click", async () => {
-  try { await send("/api/forget", {}); toast("Temporary conversations cleared. Your reviewed library is unchanged."); refreshStatus(); }
+  try { await send("/api/forget", {}); toast("Temporary conversations cleared."); refreshStatus(); }
   catch (error) { toast(error.message, true); }
 });
 
-async function loadLibrary(force = false) {
-  const data = await api(`/api/library${force ? "?refresh=1" : ""}`); state.library = data;
-  text("#library-total", compact(data.total)); text("#library-unique", compact(data.unique_words));
-  text("#cloud-description", data.messages < data.total ? `Based on ${compact(data.messages)} of ${compact(data.total)} reviewed messages.` : "Bigger words appear more often in your reviewed messages. Select one to search.");
-  renderCloud(data.words); await loadExamples();
-}
-async function loadExamples() {
-  const sequence = ++state.searchSequence;
-  const data = await api(`/api/examples?${new URLSearchParams({ q: state.query, offset: state.offset })}`);
-  if (sequence !== state.searchSequence) return;
-  const body = $("#examples-body");
-  if (!data.items.length) { const row = node("tr"), cell = node("td", state.query ? "No reviewed messages match that search." : "No reviewed messages yet. Request an export to get started.", "empty-cell"); cell.colSpan = 3; row.append(cell); body.replaceChildren(row); }
-  else body.replaceChildren(...data.items.map((item) => { const row = node("tr"); [item.id, item.text, item.characters].forEach((value) => row.append(node("td", String(value)))); return row; }));
-  text("#page-summary", data.total ? `${data.offset + 1} to ${Math.min(data.offset + data.items.length, data.total)} of ${compact(data.total)} messages` : "0 messages");
-  $("#previous-page").disabled = state.offset === 0; $("#next-page").disabled = data.offset + data.items.length >= data.total;
-}
-function searchWord(word) { clearTimeout(searchTimer); state.query = word; state.offset = 0; $("#message-search").value = word; loadExamples().catch((error) => toast(error.message, true)); }
-$("#message-search").addEventListener("input", (event) => { clearTimeout(searchTimer); const value = event.target.value; searchTimer = setTimeout(() => searchWord(value), 220); });
-$("#previous-page").addEventListener("click", () => { state.offset = Math.max(0, state.offset - 20); loadExamples().catch((error) => toast(error.message, true)); });
-$("#next-page").addEventListener("click", () => { state.offset += 20; loadExamples().catch((error) => toast(error.message, true)); });
-$("#refresh-library").addEventListener("click", () => { state.offset = 0; loadLibrary(true).catch((error) => toast(error.message, true)); });
-function renderCloud(words) {
-  const stage = $("#cloud-stage"), list = $("#word-list");
-  if (!words.length) { stage.replaceChildren(emptyCloud.cloneNode(true)); list.replaceChildren(); return; }
-  const width = Math.max(320, Math.min(1000, stage.clientWidth || 800)), height = 300;
-  const svg = svgNode("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": "Word cloud of your most common reviewed words. Use the word buttons below to search." });
-  const canvas = document.createElement("canvas"), context = canvas.getContext("2d"), placed = [];
-  const max = Math.max(...words.map((word) => word.count));
-  words.forEach((item, index) => {
-    const font = Math.round(13 + Math.sqrt(item.count / max) * 32), weight = index < 8 ? 650 : 500;
-    if (context) context.font = `${weight} ${font}px Arial`;
-    const wordWidth = (context ? context.measureText(item.word).width : item.word.length * font * .6) + 15, wordHeight = font * 1.25;
-    let box = null;
-    for (let attempt = 0; attempt < 1400; attempt++) {
-      const angle = attempt * .34 + index * .71, radius = Math.sqrt(attempt) * 5.8;
-      const x = width / 2 + Math.cos(angle) * radius * 1.8, y = height / 2 + Math.sin(angle) * radius * .75;
-      const candidate = { left: x - wordWidth / 2, top: y - wordHeight / 2, right: x + wordWidth / 2, bottom: y + wordHeight / 2, x, y };
-      if (candidate.left < 5 || candidate.right > width - 5 || candidate.top < 6 || candidate.bottom > height - 6) continue;
-      if (placed.some((other) => candidate.left < other.right && candidate.right > other.left && candidate.top < other.bottom && candidate.bottom > other.top)) continue;
-      box = candidate; break;
-    }
-    if (!box) return;
-    placed.push(box);
-    const label = svgNode("text", { x: box.x, y: box.y, "font-size": font, "font-weight": weight, "text-anchor": "middle", "dominant-baseline": "central", class: `cloud-word cloud-color-${index % 5}` }, item.word);
-    label.append(svgNode("title", {}, `${item.word}: ${item.count} occurrences`)); label.addEventListener("click", () => searchWord(item.word)); svg.append(label);
-  });
-  stage.replaceChildren(svg);
-  list.replaceChildren(...words.slice(0, 16).map((item) => { const button = node("button", item.word); button.type = "button"; button.append(node("span", compact(item.count))); button.addEventListener("click", () => searchWord(item.word)); return button; }));
-}
-window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (state.tab === "library" && state.library) renderCloud(state.library.words); }, 150); });
 enableForm($("#tuning-form"), false); enableForm($("#persona-form"), false);
+window.addEventListener("hashchange", () => selectTab(location.hash.slice(1) || "overview"));
 selectTab(location.hash.slice(1) || "overview");
 refreshStatus();
 setInterval(() => { if (!document.hidden) refreshStatus(); }, 3000);

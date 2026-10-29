@@ -3,6 +3,21 @@ from __future__ import annotations
 import argparse,json,os,re,subprocess,sys
 from pathlib import Path
 
+sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
+from akubot.model_catalog import ModelCatalog
+
+def register_models(root,trial,model,base_model):
+    source=json.loads((root/'training/base/source.json').read_text())
+    base_id='hf:'+source['repository']+'@'+source['revision']
+    base_label=source['repository'].split('/')[-1].replace('-',' ')
+    suffix=model.rsplit('v',1)[-1]
+    label='Aku style '+suffix if suffix.isdecimal() else model
+    catalog=ModelCatalog(root/'data/model-catalog.json')
+    base=next((entry for entry in catalog.read()['bases'] if entry['id']==base_id),None)
+    catalog.register(
+        base or {'id':base_id,'label':base_label,'model':base_model+':latest'},
+        {'id':model,'label':label,'base_id':base_id,'model':model+':latest'})
+
 IMAGE='ollama/ollama:0.40.12@sha256:20d1bbfbabe1c97ba4b16301f08a20d8484bcf77047742a3cb71c613d8e12d0b'
 TEMPLATE='''TEMPLATE """{{- if .System }}<|im_start|>system
 {{ .System }}<|im_end|>
@@ -66,6 +81,7 @@ def main():
     command+=['--entrypoint','/bin/sh',IMAGE,'-ec',SCRIPT]
     result=subprocess.run(command)
     if result.returncode: return result.returncode
+    register_models(root,args.trial,args.name,args.base_name)
     report={'trained_model':args.name+':latest','baseline_model':args.base_name+':latest','imported_locally':True,
             'training_report':str(output/'training-report.json'),'live_bot_restarted':False}
     (output/'install-report.json').write_text(json.dumps(report,indent=2)+'\n')

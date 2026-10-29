@@ -44,9 +44,9 @@ Use a fresh trial/output/model name for each run. Existing datasets and adapters
 
 The initial trial uses the pinned `HuggingFaceTB/SmolLM2-1.7B-Instruct` revision in `download_base.py`, BF16 LoRA rank 8, learning rate 0.0001 with warmup/decay, batch size 4, accumulation 2, and seed 42. Merged weights are converted to Q8 GGUF for Ollama. The baseline and trained model use the same base weights, template, and quantization for comparison.
 
-The importer starts its own temporary offline Ollama process to write model files to the private cache. It does not restart the existing bot or model service. After installing, use the dashboard's Tuning model selector to choose the new local model. Use Overview's local preview for tests. Keep the trained model private: it was trained on unreviewed personal text and may reproduce parts of it.
+The importer starts its own temporary offline Ollama process to write model files to the private cache. It does not restart the existing bot or model service. Installation registers the exact base and its compatible LoRA build in the private `data/model-catalog.json`. After installing, use Tuning's Base model and LoRA style selectors. Choose None to compare with the original base. Styles trained for other bases are disabled. Use Overview's local preview for tests. Keep the trained model private: it was trained on unreviewed personal text and may reproduce parts of it.
 
-The Model Library/word cloud still describes the separate SQL example database. LoRA training does not add messages to that database. Training status and scalar metrics are saved to each run's `output/metrics.jsonl`, alongside `training-report.json`; no prompts, message bodies, or generated replies are logged.
+The dashboard no longer exposes the SQL message library. LoRA training does not add messages to that separate example database. Training status and scalar metrics are saved to each run's `output/metrics.jsonl`, alongside `training-report.json`; no prompts, message bodies, or generated replies are logged.
 
 ## Full dataset, later
 
