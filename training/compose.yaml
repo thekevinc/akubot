@@ -19,7 +19,7 @@ services:
     cpus: 8
     pids_limit: 256
     volumes:
-      - ${AKU_PRIVATE_DIR:?Set AKU_PRIVATE_DIR}/training/base:/base:ro
+      - ${AKU_PRIVATE_DIR:?Set AKU_PRIVATE_DIR}/training/${AKU_TRAIN_BASE:-base}:/base:ro
       - ${AKU_PRIVATE_DIR}/training/${AKU_TRIAL_NAME:-style-trial-v1}/dataset:/dataset:ro
       - ${AKU_PRIVATE_DIR}/training/${AKU_TRIAL_NAME:-style-trial-v1}/output:/output
     deploy:

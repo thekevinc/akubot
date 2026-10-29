@@ -2,3 +2,5 @@
 !Dockerfile
 !requirements.txt
 !train.py
+!strength.py
+!rebuild.py

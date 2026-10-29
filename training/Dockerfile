@@ -3,5 +3,5 @@ WORKDIR /trainer
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 DO_NOT_TRACK=1 WANDB_DISABLED=true TOKENIZERS_PARALLELISM=false PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp
-COPY train.py ./train.py
+COPY train.py strength.py rebuild.py ./
 ENTRYPOINT ["python", "/trainer/train.py"]

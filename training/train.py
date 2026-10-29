@@ -2,6 +2,7 @@
 from __future__ import annotations
 import argparse, contextlib, json, logging, math, os, random, sys, time
 from pathlib import Path
+from strength import apply_strength, checked_strength
 
 SYSTEM = "You are Aku, an explicitly labeled AI double in Discord. Write short, natural, casual replies in the owner's style. Do not invent personal facts or claim to be the human owner."
 PROMPT = 'Write one short, casual Discord message in your usual style.'
@@ -38,7 +39,9 @@ def main():
     parser.add_argument('--batch-size', type=int, default=4)
     parser.add_argument('--accumulation', type=int, default=2)
     parser.add_argument('--learning-rate', type=float, default=1e-4)
+    parser.add_argument('--merge-strength', type=float, default=1.0)
     args = parser.parse_args()
+    checked_strength(args.merge_strength)
     if (args.steps is not None and not 1 <= args.steps <= 1000000) or not 1 <= args.batch_size <= 64 or not 1 <= args.accumulation <= 16 or not 0 < args.epochs <= 5:
         raise ValueError('Training bounds exceeded.')
     if not torch.cuda.is_available() or torch.cuda.get_device_capability(0) < (8, 0):
@@ -64,7 +67,7 @@ def main():
         args.steps = math.ceil(len(data['train']) * args.epochs / (args.batch_size * args.accumulation))
     emit(stage='loading', train_examples=len(data['train']), validation_examples=len(data['validation']))
     model = AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.bfloat16, local_files_only=True,
-                                               trust_remote_code=False, attn_implementation='sdpa').to('cuda')
+                                               trust_remote_code=False, attn_implementation='sdpa', device_map={'': 'cuda'}, low_cpu_mem_usage=True)
     model.config.use_cache = False
     model = get_peft_model(model, LoraConfig(r=8, lora_alpha=16, lora_dropout=0.05, bias='none', task_type='CAUSAL_LM',
                         target_modules=['q_proj','k_proj','v_proj','o_proj','gate_proj','up_proj','down_proj']))
@@ -121,8 +124,10 @@ def main():
     after_loss = evaluate(adapter=True)
     model.save_pretrained(args.output / 'adapter', safe_serialization=True)
     tokenizer.save_pretrained(args.output / 'adapter')
-    emit(stage='merging', trained_validation_loss=round(after_loss,4))
-    merged = model.merge_and_unload()
+    scaled_layers = apply_strength(model, args.merge_strength)
+    scaled_loss = evaluate(adapter=True) if args.merge_strength != 1 else after_loss
+    emit(stage='merging', trained_validation_loss=round(after_loss,4), scaled_validation_loss=round(scaled_loss,4), merge_strength=args.merge_strength)
+    merged = model.merge_and_unload(safe_merge=True)
     merged.config.use_cache = True
     merged.save_pretrained(args.output / 'merged', safe_serialization=True, max_shard_size='4GB')
     tokenizer.save_pretrained(args.output / 'merged')
@@ -130,7 +135,9 @@ def main():
               'rank': 8, 'trainable_parameters': trainable, 'total_parameters': total, 'seed': 42,
               'batch_size': args.batch_size, 'accumulation': args.accumulation, 'system_prompt': SYSTEM,
               'training_prompt': PROMPT, 'context_limitations': 'Standalone outgoing messages; no reconstructed conversation.',
-              'model_format': 'SmolLM2-1.7B-Instruct, BF16 LoRA adapter plus merged Safetensors',
+              'model_format': 'BF16 LoRA adapter plus merged Safetensors',
+              'base_source': json.loads((args.base/'source.json').read_text()),
+              'merge_strength': args.merge_strength, 'scaled_validation_loss': scaled_loss, 'scaled_layers': scaled_layers,
               'elapsed_seconds': time.monotonic()-start, 'versions': {'torch':torch.__version__}}
     (args.output/'training-report.json').write_text(json.dumps(report,indent=2)+'\n')
     emit(stage='complete', trained_validation_loss=round(after_loss,4))
