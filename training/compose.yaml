@@ -1,0 +1,34 @@
+name: akubot-training
+services:
+  train:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: akubot-trainer:local
+    user: "${AKU_UID:-1000}:${AKU_GID:-1000}"
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    restart: "no"
+    tmpfs:
+      - /tmp:size=1g,mode=1777,nosuid
+    shm_size: 512m
+    mem_limit: 12g
+    cpus: 8
+    pids_limit: 256
+    volumes:
+      - ${AKU_PRIVATE_DIR:?Set AKU_PRIVATE_DIR}/training/base:/base:ro
+      - ${AKU_PRIVATE_DIR}/training/${AKU_TRIAL_NAME:-style-trial-v1}/dataset:/dataset:ro
+      - ${AKU_PRIVATE_DIR}/training/${AKU_TRIAL_NAME:-style-trial-v1}/output:/output
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    logging:
+      driver: none
+    command: [--steps, "160"]

@@ -18,3 +18,10 @@ dist/
 build/
 *.egg-info/
 
+
+# Personal training artifacts belong in private WSL storage.
+training/**/*.jsonl
+training/**/*.safetensors
+training/**/*.gguf
+training/**/*.bin
+training/**/checkpoint-*/

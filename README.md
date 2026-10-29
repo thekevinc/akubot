@@ -121,6 +121,8 @@ Use the same two `-f` arguments when stopping this configuration. The CPU versio
 
 ## 4. Teach it your style
 
+For actual local LoRA fine-tuning, see [the WSL training guide](training/README.md). This creates a separate trained model and does not populate the SQL example library described below.
+
 Use the dashboard's **Personality** page to edit the active persona without restarting. Before any dashboard settings have been saved, you can also edit `config/persona.json` **inside your private storage folder**, not the template in the checkout. The private file is a startup seed; saved dashboard settings take priority. Add only public facts you want the bot to share.
 
 For message examples, request your [official Discord data package](https://support.discord.com/hc/en-us/articles/360004957991-Your-Discord-Data-Package). Unzip it locally into `imports/discord-export` inside private storage. The importer supports the official outgoing-message JSON and older CSV layout. It does not scrape Discord, fetch attachments, or reconstruct missing conversation partners' messages.
