@@ -13,6 +13,7 @@ from .config import Persona, Settings
 from .model import Ollama
 from .service import Notice, Request, Responder
 from .storage import Store
+from .triggers import is_reply_to_bot
 from .control import Control
 from .dashboard import Dashboard
 
@@ -30,7 +31,7 @@ class AkuClient(discord.Client):
         intents = discord.Intents.none()
         intents.guilds = True
         intents.guild_messages = True
-        # Mentioned messages are readable without broad Message Content access.
+        # Mentioned messages and default reply pings need no broad content access.
         super().__init__(
             intents=intents, max_messages=None,
             member_cache_flags=discord.MemberCacheFlags.none(),
@@ -125,8 +126,11 @@ class AkuClient(discord.Client):
         ):
             return
         mention = re.compile(rf"<@!?{self.user.id}>")
-        # Require an explicit mention in the text, including on follow-up replies.
-        if not mention.search(message.content):
+        # Reply pings appear in mentions metadata rather than the text itself.
+        addressed = bool(mention.search(message.content)) or any(
+            getattr(user, "id", None) == self.user.id for user in getattr(message, "mentions", ())
+        )
+        if not addressed and not is_reply_to_bot(message, self.user.id):
             return
         request = Request(message.guild.id, message.channel.id, message.author.id, mention.sub("", message.content).strip())
         try:

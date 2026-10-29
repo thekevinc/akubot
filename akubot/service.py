@@ -108,7 +108,7 @@ class Responder:
                 raise Notice("I'm paused in this server.", "paused")
             prompt = clean_input(request.text)
             if not prompt:
-                raise Notice("Mention me with a message, like `@aku what do you think?`.", "empty")
+                raise Notice("Send text with your reply or @mention. For replies, leave the reply ping on so Discord shares the text.", "empty")
             if len(prompt) > 1500:
                 raise Notice("Keep the message under 1,500 characters so I can answer locally.", "too_long")
             self.gate.enter(request)

@@ -7,7 +7,7 @@ This is an initial working implementation. Until you add your writing samples, r
 ## What stays private
 
 - Live messages go from Discord to your bot and your local Ollama model. There is no external AI provider, analytics service, or hosted vector database.
-- Ordinary channel history is not fetched. The bot responds only to explicit mentions in approved servers and optional approved channels. It ignores DMs, webhooks, and other bots.
+- Ordinary channel history is not fetched. The bot responds only to explicit mentions or direct replies to Akubot in approved servers and optional approved channels. It ignores DMs, webhooks, and other bots.
 - Short conversation memory is separate for each server, channel, and person. It lives in RAM, expires after 15 minutes of inactivity, and is swept every minute. At most two truncated exchanges per conversation and 256 conversations are retained.
 - Only examples you explicitly review and load are stored permanently. Those examples must be suitable for everyone who can invoke the bot, because model instructions cannot guarantee that examples stay secret.
 - Secrets, models, exports, reviewed examples, and the database are stored outside the checkout, outside OneDrive by default. Only code belongs in GitHub.
@@ -64,7 +64,7 @@ The first command downloads `llama3.2:3b`, roughly 2 GB. It is an explicit one-t
 
 The runtime sets `OLLAMA_NOPRUNE=1` because Ollama's startup cleanup tries to remove empty manifest directories. That cleanup fails against the read-only cache and otherwise causes a restart loop. After updating this setting, use `docker compose up -d local-ai-ollama` to recreate the container with the new configuration. For NVIDIA setups, include `-f compose.yaml -f compose.gpu.yaml` after `docker compose`.
 
-The check confirms the model is installed and reports how many reviewed style examples are loaded. Mention the bot in an approved channel to test it. Each follow-up should contain an explicit bot mention too. Simply typing the letters `@aku` without selecting the bot in Discord does not create a real mention.
+The check confirms the model is installed and reports how many reviewed style examples are loaded. Mention the bot in an approved channel to test it. Follow-ups can use Discord Reply on Akubot's message without typing another @mention. Keep the reply ping enabled: with Message Content access disabled, Discord can hide reply text when that ping is off. Replies to other people, forwards, DMs, webhooks, and bot-authored messages do not trigger Akubot. The bot checks supplied reply metadata and never fetches channel history. Simply typing the letters `@aku` without selecting the bot in Discord does not create a real mention.
 
 Monitor and configure Akubot locally or through Discord.
 
