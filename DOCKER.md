@@ -2,10 +2,10 @@
 
 Keep the **akubot** group expanded to see its two running components.
 
-| Container | Its job | What happens if you stop it |
+| Docker Desktop service (container name) | Its job | What happens if you stop it |
 | --- | --- | --- |
-| **akubot-dashboard-and-discord** | Runs the local web dashboard, saves tuning/personality settings, and connects to Discord. | The dashboard and Discord replies stop. |
-| **akubot-local-ai-ollama** | Runs Ollama, the local engine that loads the selected AI model and generates replies using the GPU. | The dashboard can stay open, but model-generated replies are unavailable. |
+| **dashboard-and-discord** (`akubot-dashboard-and-discord`) | Runs the local web dashboard, saves tuning/personality settings, and connects to Discord. | The dashboard and Discord replies stop. |
+| **local-ai-ollama** (`akubot-local-ai-ollama`) | Runs Ollama, the local engine that loads the selected AI model and generates replies using the GPU. | The dashboard can stay open, but model-generated replies are unavailable. |
 
 The dashboard address is **http://localhost:8765**. Docker may show `8765:8787`: 8765 is the port you open in your browser; 8787 is the dashboard's internal container port.
 
@@ -25,7 +25,7 @@ Ollama is the model runner. Llama and SmolLM2 are model files it can load. The t
 
 `akubot:local` and `ollama/ollama` are image names, meaning the software packages used to create these containers. They are different from the selected AI model's name.
 
-The existing Compose service names remain `bot` and `ollama`, so documented commands such as `docker compose logs bot` and the bot's private model connection continue to use those names. The longer names above make the live containers easier to identify in Docker Desktop.
+Docker Desktop's expanded Compose group displays service names. Those are now `dashboard-and-discord` and `local-ai-ollama`; the actual container names have the `akubot-` prefix shown above. Use `docker compose logs dashboard-and-discord` for application logs. The private network keeps the `ollama` alias so the bot and offline tools retain their existing model connection.
 
 Training uses separate, temporary containers and the scripts in [the WSL training guide](training/README.md). Training containers are not needed for ordinary Discord replies or dashboard use.
 

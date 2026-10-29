@@ -1,6 +1,6 @@
 # Optional NVIDIA support. Requires working Docker GPU support on your PC.
 services:
-  ollama:
+  local-ai-ollama:
     deploy:
       resources:
         reservations:

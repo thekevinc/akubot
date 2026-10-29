@@ -19,7 +19,7 @@ x-app: &app
 
 services:
   # Web dashboard and Discord connection share this Python application.
-  bot:
+  dashboard-and-discord:
     container_name: akubot-dashboard-and-discord
     <<: *app
     restart: unless-stopped
@@ -50,14 +50,14 @@ services:
         read_only: true
     networks: [discord_outbound, model_private]
     depends_on:
-      ollama:
+      local-ai-ollama:
         condition: service_healthy
     mem_limit: 384m
     cpus: 1
 
   # Local model runner. Loads the selected model/LoRA build and uses the GPU.
   # It has no dashboard and its model API is not published to the host.
-  ollama:
+  local-ai-ollama:
     container_name: akubot-local-ai-ollama
     image: ${OLLAMA_IMAGE:-ollama/ollama:0.40.12@sha256:20d1bbfbabe1c97ba4b16301f08a20d8484bcf77047742a3cb71c613d8e12d0b}
     user: "${AKU_UID:-10001}:${AKU_GID:-10001}"
@@ -85,7 +85,9 @@ services:
         read_only: true
     tmpfs:
       - /tmp:size=32m,mode=1777,noexec,nosuid
-    networks: [model_private]
+    networks:
+      model_private:
+        aliases: [ollama]
     healthcheck:
       test: [CMD, ollama, list]
       interval: 15s
