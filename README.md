@@ -127,6 +127,8 @@ For message examples, request your [official Discord data package](https://suppo
 
 **NSFW channels are excluded.** Before each import session, refresh the channel metadata using `python3 scripts/connect_discord.py --guild-id YOUR_SERVER_ID --refresh`. The resulting private channel policy expires after 24 hours. The importer rejects age-restricted channels, channels or parent categories named NSFW, and channels whose age-restriction status cannot be verified. Deleted channels, DMs, and unverified threads are excluded. An NSFW flag in the export also blocks import. Current Discord metadata cannot establish every historical channel setting, so review remains necessary.
 
+To exclude an entire server from personality examples, add its numeric server ID to the `excluded_guild_ids` array in the private `config/channel-policy.json`. Exclusions apply both when preparing candidates and when loading previously reviewed files, and survive metadata refreshes. They do not change which servers can invoke the bot. Existing loaded examples must be removed separately if an exclusion changes after import.
+
 List available channel IDs without displaying message content:
 
 ```sh

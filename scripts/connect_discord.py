@@ -14,7 +14,7 @@ from urllib.parse import urlencode
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from akubot.channel_policy import snapshot
+from akubot.channel_policy import ChannelPolicy, snapshot
 from setup import default_private_dir, initialize, validate_private_dir
 
 
@@ -97,12 +97,16 @@ def main() -> int:
         channels = discord_get(f"/guilds/{args.guild_id}/channels", token)
         if not isinstance(channels, list):
             raise ValueError("Discord returned invalid channel metadata.")
-        policy = snapshot(args.guild_id, channels)
         policy_file = private / "config" / "channel-policy.json"
+        # Local server exclusions survive refreshing Discord's NSFW metadata.
+        # Read them without applying the old snapshot's 24-hour expiry.
+        exclusions = json.loads(policy_file.read_text(encoding="utf-8")).get("excluded_guild_ids", []) if policy_file.is_file() else []
+        policy = snapshot(args.guild_id, channels, excluded_guild_ids=exclusions)
+        verified_policy = ChannelPolicy(policy)
         policy_file.write_text(json.dumps(policy, indent=2) + "\n", encoding="utf-8")
         policy_file.chmod(0o600)
-        allowed = sum(entry["nsfw"] is False for entry in policy["channels"].values())
-        print(f"Verified channel metadata: {allowed} channels eligible for reviewed examples. NSFW and unknown channels are excluded.")
+        allowed = sum(verified_policy.allows(channel_id) for channel_id in policy["channels"])
+        print(f"Verified channel metadata: {allowed} channels eligible for reviewed examples. NSFW, unknown, and excluded servers are blocked.")
         print("No messages were fetched. Refresh this policy before importing message examples; it expires after 24 hours.")
         return 0
     except ValueError as error:

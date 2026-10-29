@@ -190,6 +190,31 @@ class ImportTests(unittest.TestCase):
 
 
 class ChannelPolicyTests(unittest.TestCase):
+    def test_server_exclusion_blocks_preparation_and_old_review_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            export = root / "export"
+            channel = export / "Messages/c123"
+            channel.mkdir(parents=True)
+            (channel / "messages.json").write_text(json.dumps([{"Contents": "synthetic example"}]))
+            reviewed = root / "reviewed.jsonl"
+            reviewed.write_text(json.dumps({"text": "synthetic example", "source_channel_id": "123"}) + "\n")
+            policy = ChannelPolicy(snapshot("1", [{"id": "123", "type": 0, "nsfw": False}], excluded_guild_ids=["1"]))
+            self.assertFalse(policy.allows("123"))
+            with self.assertRaises(ValueError):
+                prepare(export, root / "candidates.jsonl", {"123"}, "7", policy)
+            with self.assertRaises(ValueError):
+                read_reviewed(reviewed, policy)
+            other = ChannelPolicy(snapshot("2", [{"id": "456", "type": 0, "nsfw": False}], excluded_guild_ids=["1"]))
+            self.assertTrue(other.allows("456"))
+
+    def test_invalid_server_exclusions_fail_closed(self):
+        for exclusions in ("1", [1], ["invalid"], ["0"], None):
+            data = snapshot("1", [{"id": "123", "type": 0, "nsfw": False}])
+            data["excluded_guild_ids"] = exclusions
+            with self.assertRaises(ValueError):
+                ChannelPolicy(data)
+
     def test_flags_names_categories_and_unknown_status(self):
         policy = ChannelPolicy(snapshot("1", [
             {"id": "1", "type": 4, "name": "NSFW category"},
@@ -501,6 +526,28 @@ class ConnectTests(unittest.TestCase):
             self.assertTrue(policy.allows("123"))
             self.assertFalse(policy.allows("456"))
             self.assertEqual([call.args[0] for call in api.call_args_list], ["/oauth2/applications/@me", "/guilds/1/channels"])
+
+    def test_refresh_preserves_server_exclusions_even_after_metadata_expires(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, private = root / "project", root / "private"
+            project.mkdir()
+            (project / ".env").write_text("ALLOWED_GUILD_IDS=1\n")
+            (private / "secrets").mkdir(parents=True)
+            (private / "config").mkdir()
+            (private / "secrets/discord_token.txt").write_text("FAKE_TEST_TOKEN_" + "x" * 40)
+            old = snapshot("1", [], excluded_guild_ids=["1"])
+            old["verified_at"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+            policy_file = private / "config/channel-policy.json"
+            policy_file.write_text(json.dumps(old))
+            responses = [{"id": "99", "owner": {"id": "7"}}, [{"id": "123", "type": 0, "nsfw": False}]]
+            argv = ["connect_discord.py", "--guild-id", "1", "--private-dir", str(private), "--refresh"]
+            with patch("sys.argv", argv), patch.object(self.connect, "__file__", str(project / "scripts/connect_discord.py")), \
+                 patch.object(self.connect, "discord_get", side_effect=responses), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(self.connect.main(), 0)
+            updated = ChannelPolicy.load(policy_file)
+            self.assertEqual(updated.excluded_guild_ids, frozenset({"1"}))
+            self.assertFalse(updated.allows("123"))
 
     def test_failed_authentication_does_not_save_token(self):
         with tempfile.TemporaryDirectory() as directory:

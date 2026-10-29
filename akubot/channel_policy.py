@@ -21,6 +21,13 @@ class ChannelPolicy:
             self.channels = data["channels"]
             if not isinstance(self.channels, dict):
                 raise ValueError
+            exclusions = data.get("excluded_guild_ids", [])
+            if not isinstance(exclusions, list) or any(
+                not isinstance(value, str) or not value.isdecimal() or int(value) <= 0
+                for value in exclusions
+            ):
+                raise ValueError
+            self.excluded_guild_ids = frozenset(exclusions)
         except (AttributeError, KeyError, TypeError, ValueError):
             raise ValueError("Channel metadata is missing or expired. Refresh it before importing messages.") from None
 
@@ -33,10 +40,15 @@ class ChannelPolicy:
 
     def allows(self, channel_id: str) -> bool:
         entry = self.channels.get(channel_id)
-        return isinstance(entry, dict) and entry.get("nsfw") is False
+        if not isinstance(entry, dict) or entry.get("nsfw") is not False:
+            return False
+        guild_id = entry.get("guild_id")
+        if not isinstance(guild_id, str):
+            return False
+        return guild_id not in self.excluded_guild_ids
 
 
-def snapshot(guild_id: str, channels: list[dict]) -> dict:
+def snapshot(guild_id: str, channels: list[dict], *, excluded_guild_ids: list[str] | None = None) -> dict:
     by_id = {str(channel.get("id")): channel for channel in channels if isinstance(channel, dict)}
 
     def blocked(channel: dict, visited: set[str]) -> bool:
@@ -58,5 +70,6 @@ def snapshot(guild_id: str, channels: list[dict]) -> dict:
         supported = channel.get("type") in {0, 2, 5, 13, 15, 16}
         value = True if blocked(channel, set()) else (False if supported and channel.get("nsfw") is False else None)
         result[channel_id] = {"guild_id": guild_id, "nsfw": value}
-    return {"version": 1, "source": "discord-api", "verified_at": datetime.now(timezone.utc).isoformat(), "channels": result}
+    return {"version": 1, "source": "discord-api", "verified_at": datetime.now(timezone.utc).isoformat(),
+            "channels": result, "excluded_guild_ids": [] if excluded_guild_ids is None else excluded_guild_ids}
 
