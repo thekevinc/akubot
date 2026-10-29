@@ -1,0 +1,6 @@
+# Reuse the locally built, pinned CUDA 13 / PyTorch 2.9.1 training environment.
+FROM akubot-trainer:local
+WORKDIR /trainer
+COPY training/train.py training/strength.py training/full_train.py training/checkpoints.py ./
+COPY akubot/training_state.py ./job_state.py
+ENTRYPOINT ["python", "/trainer/full_train.py"]

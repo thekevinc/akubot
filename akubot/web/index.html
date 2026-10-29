@@ -15,6 +15,7 @@
     <nav aria-label="Dashboard pages">
       <button class="nav-item active" data-tab="overview" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>Overview</button>
       <button class="nav-item" data-tab="tuning"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="16" cy="17" r="3"/></svg>Tuning</button>
+      <button class="nav-item" data-tab="training"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16M8 15l4-5 4 2 4-7"/></svg>Training</button>
       <button class="nav-item" data-tab="personality"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>Personality</button>
     </nav>
     <div class="sidebar-note"><span class="mini-dot"></span><div><strong>On your computer</strong><p>Local model. Private data.</p></div></div>
@@ -64,6 +65,33 @@
         <div class="save-bar"><span id="tuning-save-state">Changes apply to the next reply. No restart needed.</span><div><button type="button" class="button quiet" id="restore-tuning">Restore defaults</button><button type="submit" class="button primary" id="save-tuning">Save changes</button></div></div>
       </form>
       <article class="card preview-card"><div class="card-heading"><div><h2>Try a reply</h2><p>Test the current settings here without sending anything to Discord.</p></div><span class="pill muted">LOCAL ONLY</span></div><form id="preview-form"><label for="preview-prompt" class="sr-only">Test message</label><textarea id="preview-prompt" maxlength="1500" rows="2" placeholder="Type something you might say to Aku…" required></textarea><div class="preview-actions"><span class="small muted-text">This test is not added to conversation memory or the database.</span><button class="button secondary" id="preview-button">Try a reply</button></div></form><div id="preview-result" class="preview-result" role="status" hidden></div></article>
+    </section>
+
+    <section id="page-training" class="page" hidden>
+      <article class="card training-main">
+        <div class="card-heading"><div><h2>Llama · Full message training</h2><p>Your writing style, learned locally from your archive.</p></div><span id="training-state" class="pill muted" role="status">Checking</span></div>
+        <div class="training-progress-heading"><strong id="training-percent">0%</strong><span id="training-steps">Waiting for job details</span></div>
+        <progress id="training-progress" value="0" max="100" aria-label="Training progress"></progress>
+        <p id="training-detail" class="muted-text" aria-live="polite">Checking the background worker.</p>
+        <div class="training-actions"><button id="training-pause" class="button quiet" disabled>Pause training</button><button id="training-resume" class="button primary" disabled>Resume training</button><span class="small muted-text">Pause saves a checkpoint and releases GPU memory.</span></div>
+      </article>
+      <div class="stats-grid training-stats">
+        <article class="stat-card"><span class="stat-label">Time remaining</span><strong id="training-eta">Waiting</strong><span class="stat-foot">Estimate updates while training</span></article>
+        <article class="stat-card"><span class="stat-label">Training messages</span><strong id="training-examples">0</strong><span class="stat-foot" id="training-validation">Separate held-out validation</span></article>
+        <article class="stat-card"><span class="stat-label">Latest checkpoint</span><strong id="training-checkpoint">None yet</strong><span class="stat-foot" id="training-checkpoint-age">Every 250 steps or 5 minutes</span></article>
+        <article class="stat-card"><span class="stat-label">Training loss</span><strong id="training-loss">Waiting</strong><span class="stat-foot" id="training-validation-loss">Lower is better on held-out messages</span></article>
+      </div>
+      <article class="card training-chart-card"><div class="card-heading"><div><h2>Learning progress</h2><p>Recent training loss. Short-term bumps are normal.</p></div><span class="subtle-label">METRICS ONLY</span></div><canvas id="training-chart" width="900" height="180" role="img" aria-label="Recent training loss. Exact latest value is shown above."></canvas><p class="small muted-text" id="training-chart-note">The curve appears after training begins.</p></article>
+      <article class="card training-start"><div class="card-heading"><div><h2>Start once from WSL</h2><p>The worker runs in the background, even after you close this dashboard or terminal.</p></div></div>
+        <pre><code>cd ~/workspace/akubot
+python3 training/run_full.py start</code></pre>
+        <p class="small muted-text">After a Docker restart, computer restart, or crash, recover with:</p>
+        <pre><code>cd ~/workspace/akubot
+python3 training/run_full.py resume</code></pre>
+        <p class="small muted-text">The dashboard can pause and resume a running worker. Recovery after it exits uses the WSL command above. Checkpoints retain the optimizer, message order, and random state. An abrupt shutdown loses only work since the latest complete checkpoint.</p>
+        <div class="soft-note"><strong>Before starting</strong><p>Allow roughly 18–24 hours for one pass, plus preparation and final validation. Training needs around 19 GB of free GPU memory. Pause Discord replies and avoid loading another large model while it runs. The launcher leaves your existing services alone.</p></div>
+        <p class="small muted-text">Secret and DMs are excluded. Original message strings, including links, are retained. Long messages are limited to 512 tokens during training. This teaches style from your outgoing messages; the archive has no surrounding conversation. Training finishes with a new adapter and merged model, ready for a separate Ollama import.</p>
+      </article>
     </section>
 
     <section id="page-personality" class="page" hidden>

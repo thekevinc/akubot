@@ -6,3 +6,9 @@
 **/__pycache__
 **/*.pyc
 
+!training/
+!training/Dockerfile.full
+!training/train.py
+!training/strength.py
+!training/full_train.py
+!training/checkpoints.py

@@ -6,6 +6,7 @@ const state = { tab: "overview", latest: null, tuningRevision: 0, personaRevisio
 const titles = {
   overview: ["Overview", "A live look at replies and model readiness."],
   tuning: ["Tuning", "Make the next reply feel right. Changes stay on this computer."],
+  training: ["Training", "Full-archive Llama training, with safe pause and recovery."],
   personality: ["Personality", "Fine-tune the voice and facts Aku can share."]
 };
 const emptyChart = $(".empty-chart").cloneNode(true);
@@ -49,6 +50,7 @@ async function selectTab(tab) {
   text("#page-title", titles[tab][0]); text("#page-description", titles[tab][1]);
   history.replaceState(null, "", `#${tab}`);
   try {
+    if (tab === "training") await refreshTraining();
     if (tab === "tuning" && !state.tuningLoaded) await loadTuning();
     if (tab === "personality" && !state.personaLoaded) await loadPersona();
   } catch (error) { toast(error.message, true); }
@@ -238,8 +240,64 @@ $("#forget-button").addEventListener("click", async () => {
   catch (error) { toast(error.message, true); }
 });
 
+
+let trainingPolling = false;
+function trainingTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "Waiting";
+  if (seconds < 60) return "< 1 min";
+  if (seconds < 3600) return `${Math.ceil(seconds / 60)} min`;
+  return `${(seconds / 3600).toFixed(1)} hours`;
+}
+function renderTraining(data) {
+  const labels = { not_started: "Not prepared", ready: "Ready to start", preparing: "Preparing messages", loading: "Loading model", training: "Training", checkpointing: "Saving checkpoint", pausing: "Saving before pause", paused: "Paused", validating: "Checking held-out messages", exporting: "Exporting model", completed: "Training complete", failed: "Worker stopped", interrupted: "Interrupted", unavailable: "Status unavailable" };
+  const offline = !data.worker_online && !["ready", "not_started", "completed"].includes(data.state);
+  const pendingPause = data.worker_online && data.desired === "paused" && data.state !== "paused";
+  text("#training-state", pendingPause ? "Pause requested" : offline ? "Worker offline" : labels[data.state] || "Checking");
+  const percent = data.total_steps ? Math.min(100, 100 * data.step / data.total_steps) : 0;
+  text("#training-percent", `${percent.toFixed(1)}%`);
+  $("#training-progress").value = percent;
+  text("#training-steps", `${compact(data.step)} / ${compact(data.total_steps)} steps`);
+  let detail = data.state === "ready" ? "Prepared and stopped. Launch the WSL command below when you are ready." : data.state === "completed" ? "Training is complete. Your existing bot model stays selected until you import and choose the new model." : offline ? "The worker is not running. Use the WSL resume command below to recover the latest complete checkpoint." : data.state === "paused" ? "Progress saved. GPU memory released. Resume when ready." : pendingPause ? "Finishing the current safe step and saving progress. Wait for Paused before stopping Docker." : data.state === "preparing" ? `${compact(data.prepared_examples)} messages tokenized. No training steps yet.` : data.state === "validating" ? "Checking messages that were kept out of training. Validation does not advance the step count." : data.state === "exporting" ? "Saving the final adapter and merged model. The final training checkpoint is already safe." : "Learning from the prepared archive. Progress is saved regularly.";
+  if (data.error_code) detail += ` Error type: ${data.error_code}. Recovery keeps your checkpoints.`;
+  text("#training-detail", detail);
+  text("#training-eta", data.state === "completed" ? "Finished" : data.state === "paused" ? "Paused" : trainingTime(data.eta_seconds));
+  text("#training-examples", compact(data.train_examples));
+  text("#training-validation", `${compact(data.validation_examples)} held out for validation`);
+  text("#training-checkpoint", data.last_checkpoint_step === undefined ? "None yet" : `Step ${compact(data.last_checkpoint_step)}`);
+  text("#training-checkpoint-age", data.last_checkpoint_at ? `Saved ${new Date(data.last_checkpoint_at * 1000).toLocaleTimeString()}` : "Every 250 steps or 5 minutes");
+  text("#training-loss", Number.isFinite(data.loss) ? data.loss.toFixed(3) : "Waiting");
+  text("#training-validation-loss", Number.isFinite(data.validation_loss) ? `Held-out loss ${data.validation_loss.toFixed(3)}` : "Held-out results appear during training");
+  $("#training-pause").disabled = !data.can_pause;
+  $("#training-resume").disabled = !data.can_resume;
+  const points = (data.recent || []).filter((p) => Number.isFinite(p.loss));
+  const canvas = $("#training-chart"), context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  if (points.length > 1) {
+    const lo = Math.min(...points.map((p) => p.loss)), hi = Math.max(...points.map((p) => p.loss));
+    const first = points[0].step, last = points.at(-1).step;
+    context.strokeStyle = "#85e6c1"; context.lineWidth = 2; context.beginPath();
+    points.forEach((p, i) => { const x = 12 + (p.step - first) / Math.max(1, last - first) * (canvas.width - 24); const y = canvas.height - 12 - (p.loss - lo) / Math.max(.01, hi - lo) * (canvas.height - 24); if (i) context.lineTo(x, y); else context.moveTo(x, y); });
+    context.stroke();
+    text("#training-chart-note", `Steps ${compact(first)}–${compact(last)} · loss ${lo.toFixed(3)}–${hi.toFixed(3)} · ${compact(data.truncated_messages)} messages shortened to fit the training window`);
+  } else text("#training-chart-note", "The curve appears after a few training updates.");
+}
+async function refreshTraining() {
+  if (trainingPolling) return;
+  trainingPolling = true;
+  try { renderTraining(await api("/api/training")); }
+  catch (error) { text("#training-state", "Connection interrupted"); text("#training-detail", error.message); $("#training-pause").disabled = true; $("#training-resume").disabled = true; }
+  finally { trainingPolling = false; }
+}
+for (const action of ["pause", "resume"]) {
+  $(`#training-${action}`).addEventListener("click", async () => {
+    $("#training-pause").disabled = true; $("#training-resume").disabled = true;
+    try { renderTraining(await send("/api/training/control", { action })); toast(action === "pause" ? "Pause requested. Saving at the next safe step." : "Resume requested. Loading the saved checkpoint."); }
+    catch (error) { toast(error.message, true); await refreshTraining(); }
+  });
+}
+
 enableForm($("#tuning-form"), false); enableForm($("#persona-form"), false);
 window.addEventListener("hashchange", () => selectTab(location.hash.slice(1) || "overview"));
 selectTab(location.hash.slice(1) || "overview");
 refreshStatus();
-setInterval(() => { if (!document.hidden) refreshStatus(); }, 3000);
+setInterval(() => { if (!document.hidden) { refreshStatus(); if (state.tab === "training") refreshTraining(); } }, 3000);

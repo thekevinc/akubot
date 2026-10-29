@@ -48,19 +48,70 @@ The importer starts its own temporary offline Ollama process to write model file
 
 The dashboard no longer exposes the SQL message library. LoRA training does not add messages to that separate example database. Training status and scalar metrics are saved to each run's `output/metrics.jsonl`, alongside `training-report.json`; no prompts, message bodies, or generated replies are logged.
 
-## Full dataset, later
+## Resumable full Llama training
 
-Adding `--all-messages` to `training/data.py` prepares all unique non-empty messages outside the excluded sources, rather than sampling. The prepared full dataset lives in the private `style-full-v1` directory. It contains 413,542 training and 22,238 held-out examples. No full training job has been started.
+The full run uses the existing pinned Llama 3.1 8B Instruct source in `base-llama31`, not the SmolLM2 model or the already trained sample adapter. It starts a fresh rank-8 LoRA (alpha 16, dropout 0.05) with a conservative learning rate of 0.00002, 3% warmup, and decay. Batch size 2 with four accumulated batches gives eight messages per optimizer step. One pass over 413,542 training messages takes 51,693 steps. Another 22,238 messages remain held out. Allow roughly 18–24 hours for training on the measured RTX 5090, plus tokenization, checkpoint writes, validation, and export. Actual speed depends on message lengths and other GPU use.
 
-To train one pass later, rebuild the trainer after code changes, ensure the new output directory exists, and run:
+This run stays separate from the quick trials. Its private dataset, checkpoints, adapters, merged weights, and reports live in `~/.local/share/akubot/training/llama-full-v1/`. The owner-authorized server exclusions come from the private channel policy. DMs remain excluded. Original message strings remain intact in the files. The model still sees only the 512-token training window and a generic style request, not reconstructed conversations.
+
+Prepare and build once. These commands do not train or change running services:
 
 ```sh
-AKU_TRIAL_NAME=style-full-v1 docker compose --env-file .env \
-  -f training/compose.yaml run --rm train \
-  --epochs 1 --batch-size 16 --accumulation 1
+cd ~/workspace/akubot
+python3 training/run_full.py prepare
+python3 training/run_full.py build
 ```
 
-The explicit command overrides the quick trial's 160-step default. Benchmark the larger batch before scheduling the full run. Never publish model artifacts or datasets to GitHub.
+Preparation copies the existing full dataset, verifies every row's server scope, checks deduplication across both splits, and fingerprints the data and pinned base files. It creates the dashboard's Ready state. If rebuilding on a new machine, first build the pinned training foundation with `docker compose --env-file .env -f training/compose.yaml build train`.
+
+When ready, launch it in the background:
+
+```sh
+python3 training/run_full.py start
+```
+
+The dedicated `akubot-llama-full-training` container has no network, published ports, Discord credentials, Docker socket, or access to the bot's database. Only its private output and a narrow control mailbox are writable. It runs as your WSL user with resource limits. Closing the terminal, dashboard, or Codex does not stop it. WSL, Windows, and Docker must remain running and awake. It does not restart, unload, or reconfigure existing services. Keep roughly 19 GB of GPU memory free, and avoid loading other large models while training. An allocation failure preserves existing checkpoints for recovery.
+
+Open the dashboard's **Training** tab for step count, estimated remaining time, training and held-out loss, a recent loss curve, and the latest checkpoint. **Pause training** is a request: the worker completes the current optimizer step, saves, releases model and optimizer GPU memory, then shows Paused. During tokenization it pauses without allocating the model. During validation it cancels that validation pass, saves, and pauses. Final model export is a short non-pausable phase. Resume loads the latest checkpoint and continues. The bot's Pause replies button is independent of Pause training.
+
+The controls can also be used from WSL:
+
+```sh
+python3 training/run_full.py status
+python3 training/run_full.py pause
+python3 training/run_full.py resume
+```
+
+If the computer, Docker, or worker stops, run `resume` again. It launches a new detached worker and restores the latest complete, verified checkpoint. The dashboard deliberately cannot start containers. It marks a worker offline after its heartbeat expires (up to 30 seconds), and keeps recovery instructions visible. There are no automatic restart loops.
+
+Checkpoints save every 250 optimizer steps or five minutes, whichever comes first at a safe step boundary. They include the LoRA weights, optimizer state, learning-rate plan, completed step, exact shuffled message order and cursor, and Python/PyTorch/CUDA random states. Writes use temporary directories and a final checksum marker followed by an atomic rename. Partial writes are ignored; a corrupted newest checkpoint falls back to an earlier verified one. The latest three checkpoints and the best periodic validation checkpoint are retained. A changed dataset, base file, or job configuration is rejected for resume. A sudden shutdown can lose work after the last complete checkpoint. Tokenization has a separate atomic cache, so a completed preprocessing pass is reusable.
+
+Held-out validation uses 256 messages every 2,000 steps and the full validation set after the final step. The best periodic checkpoint is retained for comparison, but the default final export uses the final one-epoch checkpoint. A lower validation loss measures writing prediction, not how convincingly the bot answers real questions. No automatic model selection or Ollama import happens. The final adapter is exported at strength 1.0 so it can be compared or remerged later. Export failures can be retried with `resume` without repeating completed training.
+
+After training completes, convert and register the new model separately, then select it in Tuning:
+
+```sh
+python3 training/convert_models.py --private-dir ~/.local/share/akubot \
+  --trial llama-full-v1 --only-trained \
+  --base-dir ~/.local/share/akubot/training/base-llama31
+
+python3 training/install_model.py --private-dir ~/.local/share/akubot \
+  --trial llama-full-v1 --name aku-style-llama-full-v1 \
+  --base-dir ~/.local/share/akubot/training/base-llama31 \
+  --base-name llama3.1:8b --existing-base --label 'Aku full archive for Llama'
+```
+
+The mailbox is `~/.local/share/akubot/data/training-control/llama-full-v1/`. The dashboard reads only sanitized scalar metrics and writes only Pause/Resume requests there. It does not receive dataset or checkpoint mounts. Training message bodies, prompts, and replies are never written to container logs. Keep private datasets and trained models out of GitHub.
+
+The end-to-end recovery test uses a tiny, randomly initialized model and synthetic tokens. It checks exact adapter equality against uninterrupted training after forced termination and pause/resume, corrupt and incomplete checkpoint handling, fingerprint mismatch rejection, and retention bounds:
+
+```sh
+docker run --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --tmpfs /tmp:size=256m,mode=1777 \
+  --memory 2g --cpus 2 --pids-limit 128 --log-driver none \
+  --mount type=bind,src="$PWD/training/check_recovery.py",dst=/trainer/check_recovery.py,readonly \
+  --entrypoint python akubot-full-trainer:local /trainer/check_recovery.py
+```
 
 ## Checks
 

@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 
 from aiohttp import web
 
+from .training_state import RUN_ID, TrainingControl, TrainingControlError
 from .model_catalog import ModelCatalog, ModelSelectionError
 from .control import RevisionConflict, Tuning
 from dataclasses import asdict
@@ -59,6 +60,8 @@ async def private_boundary(request: web.Request, handler):
             return web.json_response({"error": "Expected JSON."}, status=415, headers=HEADERS)
     try:
         response = await handler(request)
+    except TrainingControlError as error:
+        response = web.json_response({"error": str(error)}, status=409)
     except ModelSelectionError as error:
         response = web.json_response({"error": str(error)}, status=400)
     except RevisionConflict as error:
@@ -85,6 +88,7 @@ class Dashboard:
         self.model_checked = -100.0
         self.model_lock = asyncio.Lock()
         self.catalog = ModelCatalog(client.settings.data_dir / "model-catalog.json")
+        self.training = TrainingControl(client.settings.data_dir / "training-control" / RUN_ID)
 
     @property
     def responder(self):
@@ -96,6 +100,8 @@ class Dashboard:
         app.router.add_get("/app.js", self.javascript)
         app.router.add_get("/style.css", self.stylesheet)
         app.router.add_get("/api/status", self.status)
+        app.router.add_get("/api/training", self.training_status)
+        app.router.add_post("/api/training/control", self.training_command)
         app.router.add_get("/api/settings", self.settings)
         app.router.add_put("/api/settings", self.save_settings)
         app.router.add_get("/api/persona", self.persona)
@@ -157,6 +163,15 @@ class Dashboard:
             "revision": self.client.control.revision,
             "tuning": self.client.control.document()["tuning"],
         })
+
+    async def training_status(self, request):
+        return web.json_response(await asyncio.to_thread(self.training.status))
+
+    async def training_command(self, request):
+        body = await request.json()
+        if not isinstance(body, dict) or set(body) != {"action"} or body["action"] not in ("pause", "resume"):
+            raise ValueError
+        return web.json_response(await asyncio.to_thread(self.training.request, body["action"]))
 
     async def settings(self, request):
         document = self.client.control.document()

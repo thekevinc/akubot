@@ -74,6 +74,7 @@ Once the bot is running, open **[http://localhost:8765](http://localhost:8765)**
 
 - **Overview:** connection status, model readiness, GPU memory allocation, active/queued requests, and timing for waiting, model loading, and generation. Activity retains at most 100 timing records in RAM, with no message text or Discord identities.
 - **Tuning:** choose an installed base model and a compatible LoRA style, then adjust creativity, output length, model context, cooldown, server request limits, temporary memory, and keep-loaded time. Values apply to the next reply without restarting the bot. Only installed local models can be selected. A style trained for SmolLM2 cannot be selected with Llama; it needs its own Llama training run. Compatible selections resolve to their installed model builds. There is no model download or hosted-model fallback in the dashboard.
+- **Training:** monitor the separately launched full Llama run, request a safe pause, and resume a live worker. Steps, ETA, loss, and checkpoint status contain no message text. Starting or recovering a stopped worker uses the WSL launcher; see [the resumable training guide](training/README.md#resumable-full-llama-training).
 - **Try a reply:** test a prompt locally without posting to Discord or adding it to the conversation memory or style database.
 - **Personality:** edit the active style rules and public facts. Saving clears temporary conversations and invalidates in-flight replies based on the previous personality. Existing example data is unchanged.
 
