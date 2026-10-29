@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'training'))
-from launcher import Launcher, unit_text
+from launcher import Launcher, install_launcher, unit_text
 from run_full import CONTAINER, IMAGE
 from akubot.training_state import RUN_ID, TrainingControl, TrainingControlError, atomic_json, read_json
 
@@ -126,3 +126,20 @@ class HostLauncherTests(unittest.TestCase):
         self.assertIn('ProtectSystem=strict',text)
         self.assertIn('NoNewPrivileges=yes',text)
         self.assertNotIn('docker.sock',text)
+
+    def test_install_falls_back_when_user_service_bus_is_unavailable(self):
+        with patch('launcher.TrainingControl.status',return_value={'launcher_online':False}), \
+             patch('launcher.subprocess.run',side_effect=subprocess.CalledProcessError(1,'systemctl')), \
+             patch('launcher.subprocess.Popen',return_value=SimpleNamespace(pid=123)) as spawn, \
+             patch('launcher.wait_for_launcher',return_value=True):
+            mode=install_launcher(self.root,self.root/'units/launcher.service')
+        self.assertEqual(mode,'background')
+        self.assertTrue(spawn.call_args.kwargs['start_new_session'])
+        self.assertEqual(read_json(self.root/'training/launcher/background.json')['pid'],123)
+
+    def test_install_does_not_touch_an_already_online_helper(self):
+        with patch('launcher.TrainingControl.status',return_value={'launcher_online':True}), \
+             patch('launcher.subprocess.run') as run,patch('launcher.subprocess.Popen') as spawn:
+            self.assertEqual(install_launcher(self.root,self.root/'units/launcher.service'),'online')
+            run.assert_not_called()
+            spawn.assert_not_called()

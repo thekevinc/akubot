@@ -13,7 +13,7 @@ import time
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from akubot.training_state import RUN_ID, atomic_json, read_json, valid_launch_request
+from akubot.training_state import RUN_ID, TrainingControl, atomic_json, read_json, valid_launch_request
 from run_full import CONTAINER, IMAGE
 
 
@@ -148,6 +148,50 @@ WantedBy=default.target
 '''
 
 
+def wait_for_launcher(root, timeout=5):
+    control = TrainingControl(root / 'data/training-control' / RUN_ID)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if control.status()['launcher_online']:
+            return True
+        time.sleep(.2)
+    return False
+
+
+def install_launcher(root, service_path=None):
+    control = TrainingControl(root / 'data/training-control' / RUN_ID)
+    if control.status()['launcher_online']:
+        print('Local launcher is already online. Training was left unchanged.')
+        return 'online'
+    (root / 'training/launcher').mkdir(mode=0o700, parents=True, exist_ok=True)
+    control.root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    destination = service_path or Path.home() / '.config/systemd/user/akubot-training-launcher.service'
+    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    destination.write_text(unit_text(REPO, root))
+    try:
+        for command in (['systemctl', '--user', 'daemon-reload'],
+                        ['systemctl', '--user', 'enable', '--now', 'akubot-training-launcher.service']):
+            subprocess.run(command, check=True, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=10)
+        if wait_for_launcher(root):
+            print('Local launcher service enabled. Training has not been started.')
+            return 'service'
+    except (OSError, subprocess.SubprocessError):
+        pass
+    # Some WSL sessions have no working user-service bus. A detached helper
+    # still survives closing the terminal and retains the same fixed commands.
+    process = subprocess.Popen([sys.executable, str(REPO / 'training/launcher.py'),
+                                '--private-dir', str(root)], cwd=REPO,
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, start_new_session=True)
+    atomic_json(root / 'training/launcher/background.json', {'pid': process.pid})
+    if not wait_for_launcher(root):
+        raise RuntimeError('The local launcher did not become available.')
+    print('Local launcher enabled in background mode. Training has not been started.')
+    print('After WSL shuts down, rerun this install command if the launcher is offline.')
+    return 'background'
+
+
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -158,14 +202,7 @@ def main():
     if str(root).startswith('/mnt/'):
         raise ValueError('Private training storage must stay in WSL.')
     if args.install:
-        (root / 'training/launcher').mkdir(mode=0o700, parents=True, exist_ok=True)
-        (root / 'data/training-control' / RUN_ID).mkdir(mode=0o700, parents=True, exist_ok=True)
-        destination = Path.home() / '.config/systemd/user/akubot-training-launcher.service'
-        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        destination.write_text(unit_text(REPO, root))
-        subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True)
-        subprocess.run(['systemctl', '--user', 'enable', '--now', 'akubot-training-launcher.service'], check=True)
-        print('Local launcher enabled. Training has not been started.')
+        install_launcher(root)
     else:
         Launcher(root).run()
 
