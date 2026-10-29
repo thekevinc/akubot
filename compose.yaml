@@ -18,7 +18,9 @@ x-app: &app
       max-file: "2"
 
 services:
+  # Web dashboard and Discord connection share this Python application.
   bot:
+    container_name: akubot-dashboard-and-discord
     <<: *app
     restart: unless-stopped
     environment:
@@ -35,6 +37,7 @@ services:
       DASHBOARD_ENABLED: "1"
       DASHBOARD_PORT: "8787"
     secrets: [discord_token]
+    # Dashboard address in your browser. Port 8787 is internal to Docker.
     ports:
       - "127.0.0.1:${DASHBOARD_HOST_PORT:-8765}:8787"
     volumes:
@@ -52,7 +55,10 @@ services:
     mem_limit: 384m
     cpus: 1
 
+  # Local model runner. Loads the selected model/LoRA build and uses the GPU.
+  # It has no dashboard and its model API is not published to the host.
   ollama:
+    container_name: akubot-local-ai-ollama
     image: ${OLLAMA_IMAGE:-ollama/ollama:0.40.12@sha256:20d1bbfbabe1c97ba4b16301f08a20d8484bcf77047742a3cb71c613d8e12d0b}
     user: "${AKU_UID:-10001}:${AKU_GID:-10001}"
     restart: unless-stopped
@@ -87,6 +93,7 @@ services:
       retries: 5
       start_period: 20s
     pids_limit: 256
+    # System RAM limit, separate from the GPU memory used by the model.
     mem_limit: ${OLLAMA_MEMORY_LIMIT:-6g}
     cpus: ${OLLAMA_CPU_LIMIT:-2}
     logging:
