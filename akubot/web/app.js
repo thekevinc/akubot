@@ -150,20 +150,43 @@ function modelSelection(model) {
   const base = state.models.bases.find((entry) => entry.model === model);
   return base ? { base_id: base.id, adapter_id: null } : null;
 }
+function compatibleStrengthGroups(baseId) {
+  return (state.models.strength_groups || []).filter((group) => group.base_id === baseId).map((group) => ({
+    ...group, variants: group.variants.filter((variant) => state.models.adapters.some((adapter) => adapter.id === variant.adapter_id && adapter.available))
+  })).filter((group) => group.variants.length);
+}
 function renderAdapters(adapterId = null) {
   const baseId = $("#tune-base").value;
   const base = state.models.bases.find((entry) => entry.id === baseId);
   const none = node("option", "None (base model only)"); none.value = "";
   if (!base) throw new Error("No installed base models are available. Check the local model connection.");
   const compatible = state.models.adapters.filter((entry) => entry.base_id === baseId && entry.available);
-  const options = compatible.map((entry) => {
-    const option = node("option", entry.label); option.value = entry.id; return option;
-  });
+  const groups = compatibleStrengthGroups(baseId);
+  const grouped = new Set(groups.flatMap((group) => group.variants.map((variant) => variant.adapter_id)));
+  const styles = [...compatible.filter((entry) => !grouped.has(entry.id)), ...groups];
+  const options = styles.map((entry) => { const option = node("option", entry.label); option.value = entry.id; return option; });
   $("#tune-adapter").replaceChildren(...(base.available ? [none] : []), ...options);
   const selected = compatible.find((entry) => entry.id === adapterId) || (!base.available ? compatible[0] : null);
-  $("#tune-adapter").value = selected ? selected.id : "";
+  const group = selected ? groups.find((entry) => entry.variants.some((variant) => variant.adapter_id === selected.id)) : null;
+  $("#tune-adapter").value = group ? group.id : selected ? selected.id : "";
+  state.selectedAdapterId = selected?.id || null;
   $("#tune-model").value = selected ? selected.model : base.model;
-  text("#adapter-help", selected ? `${selected.label} was trained for ${base.label}.` : compatible.length ? "Choose an installed style for this base, or use the base model alone." : "No trained styles are installed for this base yet.");
+  $("#strength-field").hidden = !group;
+  if (group) {
+    const position = group.variants.findIndex((variant) => variant.adapter_id === selected.id);
+    $("#tune-strength").max = group.variants.length - 1;
+    $("#tune-strength").value = position;
+    $("#tune-strength").setAttribute("aria-valuetext", `${group.variants[position].strength} times`);
+    text("#strength-output", `${group.variants[position].strength}×`);
+    text("#strength-help", `Available strengths: ${group.variants.map((variant) => `${variant.strength}×`).join(", ")}. Save changes to use the selected strength. Stronger can also make replies less coherent.`);
+  }
+  text("#adapter-help", selected ? `${group?.label || selected.label} was trained for ${base.label}.` : compatible.length ? "Choose an installed style for this base, or use the base model alone." : "No trained styles are installed for this base yet.");
+}
+function chooseStyle() {
+  const value = $("#tune-adapter").value;
+  const group = compatibleStrengthGroups($("#tune-base").value).find((entry) => entry.id === value);
+  const variant = group?.variants.reduce((best, item) => Math.abs(item.strength - 1) < Math.abs(best.strength - 1) ? item : best);
+  renderAdapters(variant?.adapter_id || value || null);
 }
 function fillTuning(tuning, revision, models = null) {
   if (models) state.models = models;
@@ -179,7 +202,12 @@ function fillTuning(tuning, revision, models = null) {
   state.tuningRevision = revision; state.tuningDirty = false; state.tuningLoaded = true; tuningOutputs(); enableForm(form, true);
 }
 $("#tune-base").addEventListener("change", () => renderAdapters());
-$("#tune-adapter").addEventListener("change", () => renderAdapters($("#tune-adapter").value || null));
+$("#tune-adapter").addEventListener("change", chooseStyle);
+$("#tune-strength").addEventListener("input", () => {
+  const group = compatibleStrengthGroups($("#tune-base").value).find((entry) => entry.id === $("#tune-adapter").value);
+  const variant = group?.variants[Number($("#tune-strength").value)];
+  if (variant) renderAdapters(variant.adapter_id);
+});
 async function loadTuning() {
   enableForm($("#tuning-form"), false);
   const data = await api("/api/settings"); state.defaults = data.defaults; fillTuning(data.tuning, data.revision, data.models);
@@ -192,7 +220,7 @@ $("#tuning-form").addEventListener("submit", async (event) => {
   for (const name of ["temperature", "max_tokens", "context_tokens", "cooldown_seconds", "requests_per_minute", "memory_turns", "memory_minutes"]) tuning[name] = Number(form.elements.namedItem(name).value);
   tuning.preload = form.elements.preload.checked;
   enableForm(form, false);
-  try { const data = await send("/api/settings", { revision: state.tuningRevision, tuning, selection: { base_id: $("#tune-base").value, adapter_id: $("#tune-adapter").value || null } }, "PUT"); state.defaults = data.defaults; fillTuning(data.tuning, data.revision, data.models); toast("Settings saved. They apply to the next reply."); text("#tuning-save-state", "Saved locally. No restart needed."); await refreshStatus(); }
+  try { const data = await send("/api/settings", { revision: state.tuningRevision, tuning, selection: { base_id: $("#tune-base").value, adapter_id: state.selectedAdapterId || null } }, "PUT"); state.defaults = data.defaults; fillTuning(data.tuning, data.revision, data.models); toast("Settings saved. They apply to the next reply."); text("#tuning-save-state", "Saved locally. No restart needed."); await refreshStatus(); }
   catch (error) { toast(error.message, true); }
   finally { enableForm(form, true); }
 });

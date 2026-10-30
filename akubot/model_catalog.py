@@ -1,6 +1,7 @@
 """Trusted local registry of installed base models and compatible LoRA builds."""
 from __future__ import annotations
-import json,re,os
+import json,re,os,math
+from .training_state import atomic_json
 from pathlib import Path
 
 class ModelSelectionError(ValueError):
@@ -52,7 +53,7 @@ class ModelCatalog:
             if entry['model']==current:selection={'base_id':entry['base_id'],'adapter_id':entry['id']}
         for entry in bases:
             if entry['model']==current:selection={'base_id':entry['id'],'adapter_id':None}
-        return {'bases':bases,'adapters':adapters,'selection':selection}
+        return {'bases':bases,'adapters':adapters,'selection':selection,'strength_groups':self.strength_groups()}
 
     def resolve(self,selection,installed,current):
         if not isinstance(selection,dict) or set(selection)!={'base_id','adapter_id'}:
@@ -87,3 +88,70 @@ class ModelCatalog:
             ModelCatalog(temporary).read()
             temporary.replace(self.path)
         finally:temporary.unlink(missing_ok=True)
+
+    @property
+    def strengths_path(self):
+        return self.path.with_name(self.path.stem + '-strengths.json')
+
+    def _strength_document(self):
+        if not self.strengths_path.exists():
+            return {'version': 1, 'groups': []}
+        try:
+            if self.strengths_path.is_symlink() or self.strengths_path.stat().st_size > 65536:
+                raise ValueError()
+            return json.loads(self.strengths_path.read_text())
+        except (OSError, ValueError, TypeError):
+            raise ModelSelectionError('The local LoRA strength registry needs repair.') from None
+
+    def strength_groups(self, document=None):
+        try:
+            document = self._strength_document() if document is None else document
+            catalog = self.read()
+            if not isinstance(document, dict) or set(document) != {'version', 'groups'} or document['version'] != 1:
+                raise ValueError()
+            if not isinstance(document['groups'], list) or len(document['groups']) > 50:
+                raise ValueError()
+            adapters = {entry['id']: entry for entry in catalog['adapters']}
+            used = set()
+            identifiers = {entry['id'] for entry in catalog['bases'] + catalog['adapters']}
+            groups = []
+            for group in document['groups']:
+                if not isinstance(group, dict) or set(group) != {'id', 'label', 'variants'}:
+                    raise ValueError()
+                if not valid_name(group['id']) or group['id'] in identifiers:
+                    raise ValueError()
+                identifiers.add(group['id'])
+                if not isinstance(group['label'], str) or not 1 <= len(group['label']) <= 100:
+                    raise ValueError()
+                if not isinstance(group['variants'], list) or not 1 <= len(group['variants']) <= 20:
+                    raise ValueError()
+                base_ids, strengths = set(), set()
+                for variant in group['variants']:
+                    if not isinstance(variant, dict) or set(variant) != {'adapter_id', 'strength'}:
+                        raise ValueError()
+                    identifier, strength = variant['adapter_id'], variant['strength']
+                    if not isinstance(identifier, str) or identifier not in adapters or identifier in used:
+                        raise ValueError()
+                    if type(strength) not in {int, float} or not math.isfinite(strength) or not 0 < strength <= 2 or strength in strengths:
+                        raise ValueError()
+                    used.add(identifier)
+                    strengths.add(strength)
+                    base_ids.add(adapters[identifier]['base_id'])
+                if len(base_ids) != 1:
+                    raise ValueError()
+                groups.append({**group, 'base_id': next(iter(base_ids)),
+                               'variants': sorted(group['variants'], key=lambda entry: entry['strength'])})
+            return groups
+        except (OSError, ValueError, TypeError, KeyError):
+            raise ModelSelectionError('The local LoRA strength registry needs repair.') from None
+
+    def register_strength_group(self, group):
+        document = self._strength_document()
+        self.strength_groups(document)
+        previous = next((entry for entry in document['groups'] if entry['id'] == group.get('id')), None)
+        if previous and previous != group:
+            raise ModelSelectionError('A strength group already uses this ID with different details.')
+        if not previous:
+            document['groups'].append(group)
+        self.strength_groups(document)
+        atomic_json(self.strengths_path, document)

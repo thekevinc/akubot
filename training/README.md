@@ -130,7 +130,7 @@ python3 -m unittest discover -s training -p 'test_*.py' -q
 
 ## Rebuild at a different LoRA strength
 
-Strength is a multiplier on the learned weight update before it is merged into the base model. A value of 1.5 exports `base + 1.5 * learned_update`. The original adapter checkpoint is retained at its trained scale. Strength does not supply missing context or improve the base model's reasoning. Each exported strength is registered as its own compatible style choice; Ollama does not apply a live multiplier to these merged models.
+Strength is a multiplier on the learned weight update before it is merged into the base model. A value of 1.5 exports `base + 1.5 * learned_update`. The original adapter checkpoint is retained at its trained scale. Strength does not supply missing context or improve the base model's reasoning. Each exported strength is registered as its own compatible style choice; Ollama does not apply a live multiplier to these merged models. The dashboard can group those installed variants into a LoRA strength slider. Moving the slider selects a prebuilt model; it does not train, merge, or export weights. Save changes to apply the choice to subsequent replies. The first reply after switching may need to load that model.
 
 The stronger SmolLM2 build reuses the original random-sample adapter. A separate Llama 3.1 8B adapter is trained on exactly the same 1,536 training and 96 validation messages. These runs retain all earlier data exclusions and the owner's authorization to include other server channels. No recent-only sample or full-dataset training run was started.
 
@@ -171,3 +171,5 @@ python3 training/install_model.py --private-dir ~/.local/share/akubot \
 ```
 
 `--existing-base` retains an already installed baseline rather than converting it again. The existing baseline may have a different quantization from the new Q8 trained build. Both legacy and current Ollama manifest layouts are checked before installing. The installer selects the proper native message template for SmolLM2 or Llama 3.1. Source registration appears after refreshing Tuning; no bot restart is needed.
+
+The optional private `data/model-catalog-strengths.json` file maps named style groups to adapter IDs and their numerical strength values. `ModelCatalog.register_strength_group` validates that every variant is registered against the same base, strengths are unique and finite, and a variant belongs to only one group. Tuning hides uninstalled variants and submits the actual adapter ID to the existing compatibility checks. Catalogs without strength groups keep their existing style selectors.
