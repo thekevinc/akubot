@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, fields, replace
 import math
 import re
 
 from .config import ConfigurationError, Persona
 from .storage import Store
-from .prompts import PromptSettings
+from .prompts import PromptSettings, default_prompts
 
 
 @dataclass(frozen=True)
@@ -51,19 +51,21 @@ class Control:
         try:
             self.tuning = Tuning.parse(saved["tuning"]) if saved else Tuning(model)
             self.persona = Persona.from_dict(saved["persona"]) if saved else persona
-            self.prompts = PromptSettings.from_dict(saved["prompts"]) if saved and "prompts" in saved else PromptSettings()
+            if not saved or saved.get("prompt_version") != 2:
+                self.persona = replace(self.persona, name="akubot")
+            self.prompts = PromptSettings.from_dict(saved["prompts"]) if saved and saved.get("prompt_version") == 2 else default_prompts(self.persona)
             self.revision = int(saved["revision"]) if saved else 0
         except (ValueError, KeyError, TypeError):
             raise ConfigurationError("Saved dashboard settings are invalid. Restore the private database backup.") from None
 
     def document(self) -> dict:
-        return {"revision": self.revision, "tuning": asdict(self.tuning), "persona": asdict(self.persona), "prompts": asdict(self.prompts)}
+        return {"revision": self.revision, "tuning": asdict(self.tuning), "persona": asdict(self.persona), "prompts": asdict(self.prompts), "prompt_version": 2}
 
     def _commit(self, revision: int, tuning: Tuning, persona: Persona, prompts: PromptSettings | None = None) -> None:
         if type(revision) is not int or revision != self.revision:
             raise RevisionConflict("Settings changed in another tab. Refresh before saving again.")
         prompts = self.prompts if prompts is None else prompts
-        data = {"revision": self.revision + 1, "tuning": asdict(tuning), "persona": asdict(persona), "prompts": asdict(prompts)}
+        data = {"revision": self.revision + 1, "tuning": asdict(tuning), "persona": asdict(persona), "prompts": asdict(prompts), "prompt_version": 2}
         self.store.write_control(data)
         self.tuning, self.persona, self.prompts, self.revision = tuning, persona, prompts, self.revision + 1
 
@@ -73,3 +75,6 @@ class Control:
     def update_persona(self, revision: int, data: dict, prompts: dict | None = None) -> None:
         parsed = self.prompts if prompts is None else PromptSettings.from_dict(prompts)
         self._commit(revision, self.tuning, Persona.from_dict(data), parsed)
+
+    def update_prompts(self, revision: int, data: dict) -> None:
+        self._commit(revision, self.tuning, self.persona, PromptSettings.from_dict(data))

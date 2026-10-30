@@ -7,7 +7,7 @@ const titles = {
   overview: ["Overview", "A live look at replies and model readiness."],
   tuning: ["Tuning", "Make the next reply feel right. Changes stay on this computer."],
   training: ["Training", "Full-archive Llama training, with safe pause and recovery."],
-  personality: ["Personality", "Fine-tune the voice and facts Aku can share."]
+  personality: ["Personality", "Two prompts that control how akubot replies."]
 };
 const emptyChart = $(".empty-chart").cloneNode(true);
 let toastTimer;
@@ -72,7 +72,7 @@ function renderStatus(data) {
   text("#active-count", data.metrics.active ? `${data.metrics.active} in progress` : "Nothing in progress");
   const minutes = Math.floor(data.metrics.uptime_seconds / 60);
   text("#uptime", minutes < 1 ? "Session just started" : `Online for ${minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} hr ${minutes % 60} min`}`);
-  text("#model-name", data.model.name);
+  text("#model-name", data.model.label || data.model.name);
   const modelState = data.model.warming ? "Loading" : !data.model.available ? "Unavailable" : data.model.loaded ? "Ready" : "Idle";
   text("#model-badge", modelState); $("#model-badge").className = `pill ${modelState === "Ready" ? "success" : modelState === "Idle" ? "muted" : "warning"}`;
   text("#model-caption", data.model.warming ? "Preparing the model for your next reply." : !data.model.available ? "The local model is not responding." : data.model.loaded ? "Loaded and ready to reply." : "The next reply will need to load the model.");
@@ -248,60 +248,25 @@ $("#preview-form").addEventListener("submit", async (event) => {
 async function loadPersona() {
   const form = $("#persona-form"); enableForm(form, false);
   const data = await api("/api/persona");
-  state.promptDefaults = data.prompt_defaults;
-  $("#prompt-rendered").hidden = true;
   for (const name of ["system_prompt", "user_prompt"]) form.elements.namedItem(name).value = data.prompts[name];
-  for (const name of ["name", "description"]) form.elements.namedItem(name).value = data.persona[name];
-  for (const name of ["style_rules", "public_facts"]) form.elements.namedItem(name).value = data.persona[name].join("\n");
   state.personaRevision = data.revision; state.personaDirty = false; state.personaLoaded = true; enableForm(form, true);
 }
-$("#persona-form").addEventListener("input", (event) => {
-  if (event.target.id === "prompt-inspection-message") { $("#prompt-rendered").hidden = true; return; }
-  if (["rendered-system", "rendered-user"].includes(event.target.id)) return;
-  state.personaDirty = true; $("#prompt-rendered").hidden = true;
-  text("#persona-save-state", "Unsaved personality or prompt edits. Save to apply them to the next reply.");
-});
-function personaDraft() {
-  const form = $("#persona-form"), persona = {};
-  for (const name of ["name", "description"]) persona[name] = form.elements.namedItem(name).value.trim();
-  for (const name of ["style_rules", "public_facts"]) persona[name] = form.elements.namedItem(name).value.split("\n").map((line) => line.trim()).filter(Boolean);
-  const prompts = { system_prompt: $("#system-prompt").value, user_prompt: $("#user-prompt").value };
-  return { persona, prompts };
-}
-$("#restore-prompts").addEventListener("click", () => {
-  if (!state.promptDefaults) return;
-  for (const name of ["system_prompt", "user_prompt"]) $("#persona-form").elements.namedItem(name).value = state.promptDefaults[name];
-  state.personaDirty = true; $("#prompt-rendered").hidden = true;
-  text("#persona-save-state", "Default prompts restored in the form. Save to apply them.");
-});
-$("#render-prompts").addEventListener("click", async () => {
-  const button = $("#render-prompts"); button.disabled = true;
-  try {
-    const data = await send("/api/prompts/render", { ...personaDraft(), message: $("#prompt-inspection-message").value });
-    text("#prompt-render-state", "Composed from the current form. Save personality to apply these templates to replies.");
-    $("#rendered-system").value = data.messages[0].content;
-    $("#rendered-user").value = data.messages.at(-1).content;
-    $("#prompt-rendered").hidden = false;
-  } catch (error) { toast(error.message, true); }
-  finally { button.disabled = false; }
+$("#persona-form").addEventListener("input", () => {
+  state.personaDirty = true;
+  text("#persona-save-state", "Unsaved changes.");
 });
 $("#persona-form").addEventListener("submit", async (event) => {
   event.preventDefault(); const form = event.currentTarget;
+  const prompts = { system_prompt: $("#system-prompt").value, user_prompt: $("#user-prompt").value };
   enableForm(form, false);
   try {
-    const data = await send("/api/persona", { revision: state.personaRevision, ...personaDraft() }, "PUT");
+    const data = await send("/api/persona", { revision: state.personaRevision, prompts }, "PUT");
     state.personaRevision = data.revision; state.personaDirty = false;
-    toast("Personality and prompts saved. Temporary conversations were cleared.");
-    text("#persona-save-state", "Saved locally. The next reply uses these prompts. No restart needed.");
+    toast("Prompts saved."); text("#persona-save-state", "Saved. The next reply uses these prompts.");
     refreshStatus();
   } catch (error) { toast(error.message, true); }
   finally { enableForm(form, true); }
 });
-$("#forget-button").addEventListener("click", async () => {
-  try { await send("/api/forget", {}); toast("Temporary conversations cleared."); refreshStatus(); }
-  catch (error) { toast(error.message, true); }
-});
-
 
 let trainingPolling = false;
 function trainingTime(seconds) {

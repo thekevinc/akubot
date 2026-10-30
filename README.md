@@ -1,13 +1,13 @@
-# Akubot
+# akubot
 
-A Discord AI double that responds when someone **mentions the bot**, for example `@aku what do you think?`. The model runs on your machine. Your computer must stay awake while the bot is available.
+A Discord AI double that responds when someone **mentions the bot**, for example `@akubot what do you think?`. The model runs on your machine. Your computer must stay awake while the bot is available.
 
 This is an initial working implementation. Until you add your writing samples, replies use a generic casual persona. Model quality and speed need to be evaluated on your hardware.
 
 ## What stays private
 
 - Live messages go from Discord to your bot and your local Ollama model. There is no external AI provider, analytics service, or hosted vector database.
-- Ordinary channel history is not fetched. The bot responds only to explicit mentions or direct replies to Akubot in approved servers and optional approved channels. It ignores DMs, webhooks, and other bots.
+- Ordinary channel history is not fetched. The bot responds only to explicit mentions or direct replies to akubot in approved servers and optional approved channels. It ignores DMs, webhooks, and other bots.
 - Short conversation memory is separate for each server, channel, and person. It lives in RAM, expires after 15 minutes of inactivity, and is swept every minute. At most two truncated exchanges per conversation and 256 conversations are retained.
 - Only examples you explicitly review and load are stored permanently. Those examples must be suitable for everyone who can invoke the bot, because model instructions cannot guarantee that examples stay secret.
 - Secrets, models, exports, reviewed examples, and the database are stored outside the checkout, outside OneDrive by default. Only code belongs in GitHub.
@@ -16,7 +16,7 @@ Read [SECURITY.md](SECURITY.md) for the security boundaries.
 
 ## 1. Create a dedicated Discord bot
 
-1. Visit the [Discord Developer Portal](https://discord.com/developers/applications) and create a new application named **Akubot**.
+1. Visit the [Discord Developer Portal](https://discord.com/developers/applications) and create a new application named **akubot**.
 2. Open **Bot**, configure its name/avatar, and obtain its **bot token**. A regular Discord account cannot be repurposed as a bot. Keep the token out of chat, GitHub, and screenshots.
 3. Leave **Message Content**, **Server Members**, and **Presence** privileged intents disabled. Discord supplies the content of messages mentioning a bot without broad Message Content access.
 4. Disable **Public Bot** if available, so other people cannot install it arbitrarily. Runtime server allowlists apply regardless.
@@ -44,7 +44,7 @@ Default private storage:
 
 | System | Location |
 | --- | --- |
-| Windows | `%LOCALAPPDATA%\Akubot` |
+| Windows | `%LOCALAPPDATA%\akubot` |
 | Linux/WSL | `${XDG_DATA_HOME:-~/.local/share}/akubot` |
 | macOS | `~/.local/share/akubot` |
 
@@ -64,9 +64,9 @@ The first command downloads `llama3.2:3b`, roughly 2 GB. It is an explicit one-t
 
 The runtime sets `OLLAMA_NOPRUNE=1` because Ollama's startup cleanup tries to remove empty manifest directories. That cleanup fails against the read-only cache and otherwise causes a restart loop. After updating this setting, use `docker compose up -d local-ai-ollama` to recreate the container with the new configuration. For NVIDIA setups, include `-f compose.yaml -f compose.gpu.yaml` after `docker compose`.
 
-The check confirms the model is installed and reports how many reviewed style examples are loaded. Mention the bot in an approved channel to test it. Follow-ups can use Discord Reply on Akubot's message without typing another @mention. Keep the reply ping enabled: with Message Content access disabled, Discord can hide reply text when that ping is off. Replies to other people, forwards, DMs, webhooks, and bot-authored messages do not trigger Akubot. The bot checks supplied reply metadata and never fetches channel history. Simply typing the letters `@aku` without selecting the bot in Discord does not create a real mention.
+The check confirms the model is installed and reports how many reviewed style examples are loaded. Mention the bot in an approved channel to test it. Follow-ups can use Discord Reply on akubot's message without typing another @mention. Keep the reply ping enabled: with Message Content access disabled, Discord can hide reply text when that ping is off. Replies to other people, forwards, DMs, webhooks, and bot-authored messages do not trigger akubot. The bot checks supplied reply metadata and never fetches channel history. Simply typing the letters `@akubot` without selecting the bot in Discord does not create a real mention.
 
-Monitor and configure Akubot locally or through Discord.
+Monitor and configure akubot locally or through Discord.
 
 ### Local dashboard
 
@@ -76,9 +76,9 @@ Once the bot is running, open **[http://localhost:8765](http://localhost:8765)**
 - **Tuning:** choose an installed base model and a compatible LoRA style, then adjust creativity, output length, model context, cooldown, server request limits, temporary memory, and keep-loaded time. Values apply to the next reply without restarting the bot. Only installed local models can be selected. A style trained for SmolLM2 cannot be selected with Llama; it needs its own Llama training run. Compatible selections resolve to their installed model builds. Grouped styles have a strength slider that selects installed exports, with no retraining. There is no model download or hosted-model fallback in the dashboard.
 - **Training:** start, safely stop, pause, and resume the full Llama run. Start/recovery uses a restricted WSL helper with no Docker socket in the dashboard. Steps, ETA, loss, and checkpoint status contain no message text. See [the resumable training guide](training/README.md#resumable-full-llama-training).
 - **Try a reply:** test a prompt locally without posting to Discord or adding it to the conversation memory or style database.
-- **Personality:** edit style rules, public facts, and the actual system/user prompt templates. Show composed prompts for a test message using the same renderer as real replies. Saving applies to the next reply, clears temporary conversations, and cancels replies using the old instructions. Prompt inspection stays local and sends nothing to the model or Discord.
+- **Personality:** two plain fields, System prompt and User prompt. Both start with ready-to-use defaults. The incoming Discord message is appended to the user prompt automatically. Saving applies to the next reply and clears temporary conversations. There are no placeholders or additional personality fields.
 
-Defaults are a **two-second per-person cooldown**, **30 requests per server per minute**, **128 output tokens**, and **30 minutes of model residency**, with a preload when Akubot starts. Loading a model after it has been unloaded can make the first reply slower. Keeping it loaded longer trades GPU memory for readiness. Rate limits and the four-request pending cap still apply.
+Defaults are a **two-second per-person cooldown**, **30 requests per server per minute**, **128 output tokens**, and **30 minutes of model residency**, with a preload when akubot starts. Loading a model after it has been unloaded can make the first reply slower. Keeping it loaded longer trades GPU memory for readiness. Rate limits and the four-request pending cap still apply.
 
 Dashboard settings and personality edits persist in the private SQLite database. After saving settings in the dashboard, use its Personality page for changes rather than editing the seed persona file. The seed file remains the fallback for a database that has no saved dashboard settings.
 
@@ -95,10 +95,10 @@ docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 
 | Command | Access | Effect |
 | --- | --- | --- |
-| `/aku_forget` | Anyone in an approved channel | Clears that person's temporary conversation in that channel and invalidates in-flight replies |
-| `/aku_pause` | Configured owner | Pauses the server, clears its temporary memory, and invalidates in-flight replies |
-| `/aku_resume` | Configured owner | Resumes mention replies in that server |
-| `/aku_status` | Configured owner | Shows the configured model, pause state, and example count |
+| `/akubot_forget` | Anyone in an approved channel | Clears that person's temporary conversation in that channel and invalidates in-flight replies |
+| `/akubot_pause` | Configured owner | Pauses the server, clears its temporary memory, and invalidates in-flight replies |
+| `/akubot_resume` | Configured owner | Resumes mention replies in that server |
+| `/akubot_status` | Configured owner | Shows the configured model, pause state, and example count |
 
 Controls reply privately to the person invoking them. Owner authorization uses your numeric user ID, not your display name. Pause state survives restarts.
 

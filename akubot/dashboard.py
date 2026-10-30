@@ -10,9 +10,7 @@ from aiohttp import web
 
 from .training_state import RUN_ID, TrainingControl, TrainingControlError
 from .model_catalog import ModelCatalog, ModelSelectionError
-from .prompts import PromptSettings, PromptValidationError, build_messages
-from .config import Persona
-from .privacy import clean_input
+from .prompts import PromptValidationError
 from .control import RevisionConflict, Tuning
 from dataclasses import asdict
 from .model import ModelError
@@ -110,7 +108,6 @@ class Dashboard:
         app.router.add_get("/api/settings", self.settings)
         app.router.add_put("/api/settings", self.save_settings)
         app.router.add_get("/api/persona", self.persona)
-        app.router.add_post("/api/prompts/render", self.render_prompts)
         app.router.add_put("/api/persona", self.save_persona)
         app.router.add_post("/api/pause", self.pause)
         app.router.add_post("/api/forget", self.forget)
@@ -155,7 +152,10 @@ class Dashboard:
                     except ModelError:
                         self.model_cache = {"available": False, "loaded": False, "name": self.client.control.tuning.model, "installed": []}
                     self.model_checked = time.monotonic()
-        return {**self.model_cache, "warming": bool(self.warm_task and not self.warm_task.done())}
+        name = self.model_cache.get("name", self.client.control.tuning.model)
+        catalog = self.catalog.read()
+        label = next((entry["label"] for entry in catalog["bases"] + catalog["adapters"] if entry["model"] == name), name)
+        return {**self.model_cache, "label": label, "warming": bool(self.warm_task and not self.warm_task.done())}
 
     async def status(self, request):
         ready = self.client.is_ready()
@@ -211,28 +211,19 @@ class Dashboard:
 
     async def persona(self, request):
         document = self.client.control.document()
-        return web.json_response({"revision": document["revision"], "persona": document["persona"], "prompts": document["prompts"], "prompt_defaults": asdict(PromptSettings())})
+        return web.json_response({"revision": document["revision"], "prompts": document["prompts"]})
 
     async def save_persona(self, request):
         body = await request.json()
-        if not isinstance(body, dict) or set(body) not in ({"revision", "persona"}, {"revision", "persona", "prompts"}):
+        if not isinstance(body, dict) or set(body) not in ({"revision", "prompts"}, {"revision", "persona"}, {"revision", "persona", "prompts"}):
             raise ValueError
-        self.client.control.update_persona(body["revision"], body["persona"], body.get("prompts"))
+        if "persona" in body:
+            self.client.control.update_persona(body["revision"], body["persona"], body.get("prompts"))
+        else:
+            self.client.control.update_prompts(body["revision"], body["prompts"])
         for identifier in self.client.settings.guild_ids:
             self.responder.clear_guild(identifier)
         return await self.persona(request)
-
-    async def render_prompts(self, request):
-        body = await request.json()
-        if not isinstance(body, dict) or set(body) != {"persona", "prompts", "message"} or not isinstance(body["message"], str):
-            raise ValueError
-        message = clean_input(body["message"])
-        if not message or len(message) > 1500:
-            raise PromptValidationError("Use a test message between 1 and 1,500 characters.")
-        persona = Persona.from_dict(body["persona"])
-        settings = PromptSettings.from_dict(body["prompts"])
-        messages = build_messages(persona, self.client.store.examples(message), settings, message)
-        return web.json_response({"messages": messages})
 
     async def pause(self, request):
         body = await request.json()

@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>Aku · Local dashboard</title>
+  <title>akubot · Local dashboard</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
   <aside class="sidebar">
-    <a class="brand" href="#overview" aria-label="Aku dashboard home"><span class="brand-mark">a<span>•</span></span><span>aku<span class="brand-period">.</span></span></a>
+    <a class="brand" href="#overview" aria-label="akubot dashboard home"><span class="brand-mark">a<span>•</span></span><span>akubot</span></a>
     <div class="workspace-label">YOUR LOCAL DOUBLE</div>
     <nav aria-label="Dashboard pages">
       <button class="nav-item active" data-tab="overview" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>Overview</button>
@@ -23,9 +23,9 @@
   </aside>
 
   <main>
-    <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> Akubot</div><div class="top-actions"><span class="badge" id="connection-badge"><span class="status-dot"></span>Connecting</span><button id="pause-button" class="button quiet" disabled>Pause replies</button></div></header>
+    <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> akubot</div><div class="top-actions"><span class="badge" id="connection-badge"><span class="status-dot"></span>Connecting</span><button id="pause-button" class="button quiet" disabled>Pause replies</button></div></header>
     <div id="connection-error" class="banner" role="status" hidden>Dashboard connection interrupted. Reconnecting automatically.</div>
-    <div class="page-heading"><div><div class="eyebrow">AKUBOT CONTROL ROOM</div><h1 id="page-title">Overview</h1><p id="page-description">A live look at replies and model readiness.</p></div><span class="live-indicator"><span class="mini-dot"></span>LIVE · EVERY 3 SEC</span></div>
+    <div class="page-heading"><div><div class="eyebrow">akubot control room</div><h1 id="page-title">Overview</h1><p id="page-description">A live look at replies and model readiness.</p></div><span class="live-indicator"><span class="mini-dot"></span>LIVE · EVERY 3 SEC</span></div>
 
     <section id="page-overview" class="page">
       <div class="stats-grid">
@@ -35,7 +35,7 @@
         <article class="stat-card"><span class="stat-label">Waiting for a reply</span><strong id="queue-count">0</strong><span class="stat-foot" id="active-count">Nothing in progress</span></article>
       </div>
       <div class="overview-grid">
-        <article class="card chart-card"><div class="card-heading"><div><h2>Reply timing</h2><p>See where the time goes.</p></div><span class="subtle-label">LAST 24 EVENTS</span></div><div class="chart-legend"><span><i class="legend-queue"></i>Waiting</span><span><i class="legend-load"></i>Loading model</span><span><i class="legend-generate"></i>Generating</span></div><div class="timing-chart" id="timing-chart"><div class="empty-chart">Mention Akubot in Discord to see reply timings here.</div></div><div class="chart-footer"><span>Timing data only. Message contents stay out of this view.</span><span id="rate-limited-count"></span></div></article>
+        <article class="card chart-card"><div class="card-heading"><div><h2>Reply timing</h2><p>See where the time goes.</p></div><span class="subtle-label">LAST 24 EVENTS</span></div><div class="chart-legend"><span><i class="legend-queue"></i>Waiting</span><span><i class="legend-load"></i>Loading model</span><span><i class="legend-generate"></i>Generating</span></div><div class="timing-chart" id="timing-chart"><div class="empty-chart">Mention akubot in Discord to see reply timings here.</div></div><div class="chart-footer"><span>Timing data only. Message contents stay out of this view.</span><span id="rate-limited-count"></span></div></article>
         <article class="card model-card"><div class="card-heading"><h2>Your model</h2><span id="model-badge" class="pill muted">Checking</span></div><div class="model-glyph" aria-hidden="true">✳</div><h3 id="model-name">Local model</h3><p class="model-caption" id="model-caption">Checking the local connection.</p><dl class="model-details"><div><dt>Model on GPU</dt><dd id="gpu-percent">N/A</dd></div><div><dt>GPU memory</dt><dd id="vram">N/A</dd></div><div><dt>Keep ready</dt><dd id="keep-ready">30 minutes</dd></div></dl><button class="button secondary full" id="warm-button">Load model</button><p class="small muted-text">Keeping the model loaded avoids a slower first reply.</p></article>
       </div>
       <article class="card activity-card"><div class="card-heading"><div><h2>Recent activity</h2><p>Reply timing, cooldowns, and model loads. No chat transcripts.</p></div><button class="text-button" data-tab="tuning">Adjust settings ↗</button></div><div class="table-scroll"><table><thead><tr><th>Event</th><th>Time</th><th>Waiting</th><th>Model load</th><th>Generation</th><th>Total</th><th>Result</th></tr></thead><tbody id="activity-body"><tr><td colspan="7" class="empty-cell">Activity will appear after the next mention.</td></tr></tbody></table></div></article>
@@ -45,19 +45,19 @@
     <section id="page-tuning" class="page" hidden>
       <form id="tuning-form">
         <div class="two-column">
-          <article class="card"><div class="card-heading"><div><h2>How Aku replies</h2><p>Find a comfortable pace and style.</p></div></div>
+          <article class="card"><div class="card-heading"><div><h2>How akubot replies</h2><p>Find a comfortable pace and style.</p></div></div>
             <input type="hidden" name="model" id="tune-model">
             <label class="field"><span>Base model</span><select name="base_id" id="tune-base" required></select><small>The model that provides general knowledge and conversation ability.</small></label>
             <label class="field"><span>LoRA style</span><select name="adapter_id" id="tune-adapter" aria-describedby="adapter-help"></select><small id="adapter-help" role="status">Styles work only with the base model they were trained on.</small></label>
             <div id="strength-field" hidden><label class="field"><span class="label-row">LoRA strength <output id="strength-output">1×</output></span><input type="range" id="tune-strength" min="0" max="2" step="1" value="0" aria-describedby="strength-help"><small id="strength-help">Select a strength, then save changes.</small></label></div>
-            <label class="field"><span class="label-row">Reply length <output id="max-tokens-output">128 tokens</output></span><input type="range" name="max_tokens" min="32" max="512" step="16" value="128"><small>Higher limits allow longer replies. Aku can use fewer tokens.</small></label>
+            <label class="field"><span class="label-row">Reply length <output id="max-tokens-output">128 tokens</output></span><input type="range" name="max_tokens" min="32" max="512" step="16" value="128"><small>Higher limits allow longer replies. akubot can use fewer tokens.</small></label>
             <label class="field"><span class="label-row">Creativity <output id="temperature-output">0.80</output></span><input type="range" name="temperature" min="0" max="1.5" step="0.05" value="0.8"><small>Lower is more consistent. Higher is more varied.</small></label>
             <label class="field"><span class="label-row">Time between pings <output id="cooldown-output">2 seconds</output></span><input type="range" name="cooldown_seconds" min="0" max="30" step="1" value="2"><small>Limits how often one person can trigger a reply. Set to zero to disable.</small></label>
             <label class="field inline-field"><span>Server requests per minute<small>A shared limit for everyone in each enabled server.</small></span><input name="requests_per_minute" type="number" min="1" max="120" value="30" required></label>
           </article>
           <article class="card"><div class="card-heading"><div><h2>Speed &amp; memory</h2><p>Balance responsiveness with resource use.</p></div></div>
             <label class="field"><span>Keep model ready</span><select name="keep_alive"><option value="5m">5 minutes</option><option value="30m" selected>30 minutes</option><option value="2h">2 hours</option><option value="-1">Always loaded</option></select><small>Keeping it loaded uses GPU memory and avoids cold starts.</small></label>
-            <label class="check-field"><input type="checkbox" name="preload" checked><span>Load the model when Akubot starts<small>Prepares it before the first Discord mention.</small></span></label>
+            <label class="check-field"><input type="checkbox" name="preload" checked><span>Load the model when akubot starts<small>Prepares it before the first Discord mention.</small></span></label>
             <label class="field"><span>Conversation memory</span><select name="memory_turns"><option value="0">Off</option><option value="1">Last exchange</option><option value="2" selected>Last 2 exchanges</option><option value="3">Last 3 exchanges</option><option value="4">Last 4 exchanges</option><option value="5">Last 5 exchanges</option><option value="6">Last 6 exchanges</option></select><small>Temporary context stays separate for each person and channel.</small></label>
             <label class="field inline-field"><span>Forget idle conversations after<small>Memory is held in RAM, never saved as chat history.</small></span><span class="input-unit"><input name="memory_minutes" type="number" min="1" max="60" value="15" required>min</span></label>
             <label class="field"><span>Context window</span><select name="context_tokens"><option value="2048">2,048 tokens</option><option value="4096" selected>4,096 tokens</option><option value="8192">8,192 tokens</option></select><small>A larger window can hold more context and uses more memory.</small></label>
@@ -65,7 +65,7 @@
         </div>
         <div class="save-bar"><span id="tuning-save-state">Changes apply to the next reply. No restart needed.</span><div><button type="button" class="button quiet" id="restore-tuning">Restore defaults</button><button type="submit" class="button primary" id="save-tuning">Save changes</button></div></div>
       </form>
-      <article class="card preview-card"><div class="card-heading"><div><h2>Try a reply</h2><p>Test the current settings here without sending anything to Discord.</p></div><span class="pill muted">LOCAL ONLY</span></div><form id="preview-form"><label for="preview-prompt" class="sr-only">Test message</label><textarea id="preview-prompt" maxlength="1500" rows="2" placeholder="Type something you might say to Aku…" required></textarea><div class="preview-actions"><span class="small muted-text">This test is not added to conversation memory or the database.</span><button class="button secondary" id="preview-button">Try a reply</button></div></form><div id="preview-result" class="preview-result" role="status" hidden></div></article>
+      <article class="card preview-card"><div class="card-heading"><div><h2>Try a reply</h2><p>Test the current settings here without sending anything to Discord.</p></div><span class="pill muted">LOCAL ONLY</span></div><form id="preview-form"><label for="preview-prompt" class="sr-only">Test message</label><textarea id="preview-prompt" maxlength="1500" rows="2" placeholder="Type something you might say to akubot…" required></textarea><div class="preview-actions"><span class="small muted-text">This test is not added to conversation memory or the database.</span><button class="button secondary" id="preview-button">Try a reply</button></div></form><div id="preview-result" class="preview-result" role="status" hidden></div></article>
     </section>
 
     <section id="page-training" class="page" hidden>
@@ -94,21 +94,13 @@ python3 training/launcher.py --install</code></pre><p class="small muted-text">Y
     </section>
 
     <section id="page-personality" class="page" hidden>
-      <form id="persona-form"><article class="card prompt-editor"><div class="card-heading"><div><h2>Model prompts</h2><p>These templates are used for every reply. Save to apply edits to the next message.</p></div><button type="button" class="button quiet" id="restore-prompts">Restore prompt defaults</button></div>
-        <label class="field"><span>System prompt template</span><textarea name="system_prompt" id="system-prompt" rows="14" maxlength="16000" required spellcheck="false"></textarea><small>Available placeholders: {name}, {description}, {style_rules}, {public_facts}, {examples}. The fields below fill these placeholders. Removing one leaves that field out of the prompt.</small></label>
-        <label class="field"><span>User prompt template</span><textarea name="user_prompt" id="user-prompt" rows="3" maxlength="4000" required spellcheck="false"></textarea><small>Keep {message} where the incoming Discord message should appear. The default sends the message directly. JSON braces can be written normally.</small></label>
-        <p class="small muted-text">These are runtime instructions. Editing them does not retrain the LoRA. A trained model can still ignore instructions; a prompt is not a guaranteed link filter.</p>
-      </article>
-      <article class="card prompt-inspector"><div class="card-heading"><div><h2>See the composed prompts</h2><p>Check your current draft with a test message before saving.</p></div><button type="button" class="button secondary" id="render-prompts">Show composed prompts</button></div>
-        <label class="field"><span>Test incoming message</span><textarea id="prompt-inspection-message" rows="2" maxlength="1500">hey aku, how's it going?</textarea></label>
-        <p class="small muted-text" id="prompt-render-state" role="status">This preview sends nothing to the model or Discord. It uses the same prompt builder as real replies, with any matching reviewed examples. Discord replies can also include temporary conversation memory.</p>
-        <div id="prompt-rendered" hidden><label class="field"><span>System message sent to the model</span><textarea id="rendered-system" rows="12" readonly spellcheck="false"></textarea></label><label class="field"><span>User message sent to the model</span><textarea id="rendered-user" rows="4" readonly spellcheck="false"></textarea></label></div>
-      </article>
-
-<div class="two-column"><article class="card"><div class="card-heading"><div><h2>A little more like you</h2><p>Shape Aku’s voice and the facts it can share.</p></div></div><label class="field"><span>Name</span><input name="name" maxlength="60" required></label><label class="field"><span>Description</span><textarea name="description" rows="3" maxlength="1000" required></textarea><small>Describe the personality and the kind of conversation it should fit.</small></label><label class="field"><span>Style notes</span><textarea name="style_rules" rows="8" maxlength="12000" placeholder="One note per line"></textarea><small>One note per line, such as “use short lowercase replies.”</small></label></article><article class="card"><div class="card-heading"><div><h2>Facts Aku can share</h2><p>Optional information you want it to know about you.</p></div></div><label class="field"><span>Public facts</span><textarea name="public_facts" rows="10" maxlength="12000" placeholder="One public fact per line"></textarea><small>Only add facts you want anyone in an enabled server to hear. Keep private information out.</small></label><div class="soft-note"><strong>Style is different from memory.</strong><p>The selected model and LoRA influence how you write. These facts define what Aku can say about you.</p></div></article></div><div class="save-bar"><span id="persona-save-state">Saving clears temporary conversations so old facts are not carried forward.</span><button type="submit" class="button primary">Save personality</button></div></form>
-      <article class="card privacy-controls"><div><h2>Clear temporary conversations</h2><p>Forget the short-lived context for everyone in enabled servers. Your personality settings and trained models stay intact.</p></div><button id="forget-button" class="button quiet">Clear conversations</button></article>
+      <form id="persona-form"><article class="card prompt-editor">
+        <label class="field"><span>System prompt</span><textarea name="system_prompt" id="system-prompt" rows="12" maxlength="16000" required spellcheck="false"></textarea><small>Defines how akubot behaves and writes.</small></label>
+        <label class="field"><span>User prompt</span><textarea name="user_prompt" id="user-prompt" rows="4" maxlength="4000" spellcheck="false"></textarea><small>Added before each incoming Discord message automatically.</small></label>
+        <div class="save-bar"><span id="persona-save-state">Changes apply to the next reply.</span><button type="submit" class="button primary">Save prompts</button></div>
+      </article></form>
     </section>
-    <footer class="footer"><span>Akubot · Local control</span><span id="footer-status">Waiting for local status</span></footer>
+    <footer class="footer"><span>akubot · Local control</span><span id="footer-status">Waiting for local status</span></footer>
   </main>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>

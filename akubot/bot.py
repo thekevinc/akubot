@@ -47,7 +47,7 @@ class AkuClient(discord.Client):
         self._register_commands()
 
     def _register_commands(self) -> None:
-        @self.tree.command(name="aku_forget", description="Clear your temporary conversation with Aku in this channel")
+        @self.tree.command(name="akubot_forget", description="Clear your temporary conversation with akubot in this channel")
         async def forget(interaction: discord.Interaction):
             if not await self._authorize(interaction):
                 return
@@ -55,29 +55,29 @@ class AkuClient(discord.Client):
             self.responder.forget((interaction.guild_id, interaction.channel_id, interaction.user.id))
             await interaction.response.send_message("Your temporary conversation in this channel has been cleared.", ephemeral=True)
 
-        @self.tree.command(name="aku_pause", description="Owner only: pause Aku and clear temporary memory in this server")
+        @self.tree.command(name="akubot_pause", description="Owner only: pause akubot and clear temporary memory in this server")
         async def pause(interaction: discord.Interaction):
             if not await self._authorize(interaction, owner=True):
                 return
             assert self.responder is not None
             self.responder.pause(interaction.guild_id, True)
-            await interaction.response.send_message("Aku is paused in this server. Temporary conversations were cleared.", ephemeral=True)
+            await interaction.response.send_message("akubot is paused in this server. Temporary conversations were cleared.", ephemeral=True)
 
-        @self.tree.command(name="aku_resume", description="Owner only: resume Aku in this server")
+        @self.tree.command(name="akubot_resume", description="Owner only: resume akubot in this server")
         async def resume(interaction: discord.Interaction):
             if not await self._authorize(interaction, owner=True):
                 return
             assert self.responder is not None
             self.responder.pause(interaction.guild_id, False)
-            await interaction.response.send_message("Aku can respond to mentions in this server again.", ephemeral=True)
+            await interaction.response.send_message("akubot can respond to mentions in this server again.", ephemeral=True)
 
-        @self.tree.command(name="aku_status", description="Owner only: show Aku's local model and personality status")
+        @self.tree.command(name="akubot_status", description="Owner only: show akubot's local model and personality status")
         async def status(interaction: discord.Interaction):
             if not await self._authorize(interaction, owner=True):
                 return
             state = "paused" if self.store.is_paused(interaction.guild_id) else "responding to mentions"
             await interaction.response.send_message(
-                f"Aku is {state}. Local model: `{self.control.tuning.model}`. "
+                f"akubot is {state}. Local model: `{self.control.tuning.model}`. "
                 f"Reviewed style examples: {self.store.count()}. "
                 f"Conversation memory stays in RAM for up to {self.control.tuning.memory_minutes} minutes, with expired entries cleared every minute.",
                 ephemeral=True,
@@ -116,7 +116,7 @@ class AkuClient(discord.Client):
     async def on_ready(self) -> None:
         logger.info("Connected. Mention replies configured for %d server(s).", len(self.settings.guild_ids))
         if not self.store.count():
-            logger.info("No style examples loaded yet. Edit the persona or import reviewed examples to personalize Aku.")
+            logger.info("No style examples loaded yet. Edit the persona or import reviewed examples to personalize akubot.")
 
     async def on_message(self, message: discord.Message) -> None:
         if (

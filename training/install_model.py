@@ -11,7 +11,7 @@ def register_models(root,trial,model,base_model,base_dir=None,label=None):
     base_id='hf:'+source['repository']+'@'+source['revision']
     base_label=source['repository'].split('/')[-1].replace('-',' ')
     suffix=model.rsplit('v',1)[-1]
-    label=label or ('Aku style '+suffix if suffix.isdecimal() else model)
+    label=label or ('akubot style '+suffix if suffix.isdecimal() else model)
     catalog=ModelCatalog(root/'data/model-catalog.json')
     base=next((entry for entry in catalog.read()['bases'] if entry['id']==base_id),None)
     catalog.register(

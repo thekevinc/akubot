@@ -28,7 +28,7 @@ def discord_get(path: str, token: str):
         raise ValueError("Invalid Discord metadata request.")
     request = urllib.request.Request("https://discord.com/api/v10" + path, headers={
         "Authorization": "Bot " + token,
-        "User-Agent": "AkubotSetup/0.1 (local private bot)",
+        "User-Agent": "akubotSetup/0.1 (local private bot)",
     })
     opener = urllib.request.build_opener(NoRedirect(), urllib.request.ProxyHandler({}))
     try:
@@ -48,7 +48,7 @@ def discord_get(path: str, token: str):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Configure Akubot using a hidden token prompt and Discord metadata only")
+    parser = argparse.ArgumentParser(description="Configure akubot using a hidden token prompt and Discord metadata only")
     parser.add_argument("--guild-id", required=True)
     parser.add_argument("--owner-id", help="Only needed if Discord does not return a personal application owner")
     parser.add_argument("--private-dir", type=Path, default=default_private_dir())

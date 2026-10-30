@@ -8,7 +8,7 @@ import aiohttp
 
 from .config import Persona, local_model_url
 from .control import Control, Tuning
-from .prompts import PromptSettings
+from .prompts import default_prompts
 
 
 class ModelError(RuntimeError):
@@ -16,7 +16,7 @@ class ModelError(RuntimeError):
 
 
 def system_prompt(persona: Persona, examples: list[str]) -> str:
-    return PromptSettings().render_system(persona, examples)
+    return default_prompts(persona).system_prompt
 
 
 class Ollama:

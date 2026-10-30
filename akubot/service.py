@@ -12,7 +12,7 @@ from .control import Control
 from .memory import Memory, SessionKey
 from .metrics import Metrics
 from .model import ModelError
-from .prompts import PromptSettings, build_messages
+from .prompts import default_prompts, build_messages
 from .privacy import clean_input, clean_output
 from .storage import Store
 
@@ -125,9 +125,9 @@ class Responder:
                 if current != revision:
                     raise Notice("That reply was cancelled because the conversation was cleared or paused.", "cancelled")
                 persona = self.control.persona if self.control else self.persona
-                prompt_settings = self.control.prompts if self.control else PromptSettings()
+                prompt_settings = self.control.prompts if self.control else default_prompts(self.persona)
                 history = self.memory.get(request.key) if request.source == "discord" else ()
-                messages = build_messages(persona, self.store.examples(prompt), prompt_settings, prompt, history)
+                messages = build_messages(prompt_settings, prompt, history)
                 try:
                     answer = clean_output(await self.model.generate(messages))
                     timing = getattr(self.model, "last_metrics", None)

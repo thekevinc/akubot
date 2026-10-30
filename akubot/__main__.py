@@ -13,7 +13,7 @@ from .channel_policy import ChannelPolicy
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description="Akubot: private, local Discord personality bot")
+    result = argparse.ArgumentParser(description="akubot: private, local Discord personality bot")
     commands = result.add_subparsers(dest="command", required=True)
     commands.add_parser("run", help="Connect the configured bot to Discord")
     commands.add_parser("check", help="Check the local model and personality database")
@@ -54,7 +54,7 @@ async def check_model() -> int:
     try:
         print(f"Local model ready. Reviewed examples: {store.count()}.")
         if not store.count():
-            print("Aku can reply, but it has not been personalized with your message examples yet.")
+            print("akubot can reply, but it has not been personalized with your message examples yet.")
     finally:
         store.close()
     return 0
@@ -124,7 +124,7 @@ def main() -> int:
     except KeyboardInterrupt:
         return 130
     except Exception:
-        print("Akubot stopped unexpectedly. No credentials or message content were logged.")
+        print("akubot stopped unexpectedly. No credentials or message content were logged.")
         return 1
 
 

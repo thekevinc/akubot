@@ -78,7 +78,7 @@ Enable the small local launcher once to use dashboard Start/Stop:
 python3 training/launcher.py --install
 ```
 
-This installs an Akubot user service in `~/.config/systemd/user/akubot-training-launcher.service`. Enabling the helper does not start training. The service runs in WSL as your user, with read-only home/system files and write access limited to its private receipt folder and training mailbox. It opens no HTTP listener and accepts no executable, arguments, paths, images, or container names from the dashboard. Its only launch action invokes the fixed prepared job. Docker operations remain in the host helper, outside the dashboard container. Start requests have a short expiry, durable acknowledgments, and replay protection. A helper restart never automatically replays an acknowledged start.
+This installs an akubot user service in `~/.config/systemd/user/akubot-training-launcher.service`. Enabling the helper does not start training. The service runs in WSL as your user, with read-only home/system files and write access limited to its private receipt folder and training mailbox. It opens no HTTP listener and accepts no executable, arguments, paths, images, or container names from the dashboard. Its only launch action invokes the fixed prepared job. Docker operations remain in the host helper, outside the dashboard container. Start requests have a short expiry, durable acknowledgments, and replay protection. A helper restart never automatically replays an acknowledged start.
 
 Open the dashboard's **Training** tab for Start/Stop, step count, estimated remaining time, training and held-out loss, a recent loss curve, and the latest checkpoint. **Start training** launches the job or recovers its latest checkpoint. **Stop training** requests a safe checkpoint and worker exit. It never force-kills or deletes checkpoints. Wait for Stopped before shutting down Docker. Stop also works while paused. **Pause training** is a request: the worker completes the current optimizer step, saves, releases model and optimizer GPU memory, then shows Paused. During tokenization it pauses without allocating the model. During validation it cancels that validation pass, saves, and pauses. Final model export is a short non-pausable phase. Resume loads the latest checkpoint and continues. The bot's Pause replies button is independent of Pause training.
 
@@ -107,7 +107,7 @@ python3 training/convert_models.py --private-dir ~/.local/share/akubot \
 python3 training/install_model.py --private-dir ~/.local/share/akubot \
   --trial llama-full-v1 --name aku-style-llama-full-v1 \
   --base-dir ~/.local/share/akubot/training/base-llama31 \
-  --base-name llama3.1:8b --existing-base --label 'Aku full archive for Llama'
+  --base-name llama3.1:8b --existing-base --label 'akubot full archive for Llama'
 ```
 
 The mailbox is `~/.local/share/akubot/data/training-control/llama-full-v1/`. The dashboard reads only sanitized scalar metrics and writes only the four fixed training commands there. The host helper keeps its durable request receipt under `training/launcher`, outside the dashboard mount. It does not receive dataset or checkpoint mounts. Training message bodies, prompts, and replies are never written to container logs. Keep private datasets and trained models out of GitHub.
@@ -167,7 +167,7 @@ python3 training/install_model.py --private-dir ~/.local/share/akubot \
   --trial style-llama-strong-v1 --name aku-style-llama-strong-v1 \
   --base-dir ~/.local/share/akubot/training/base-llama31 \
   --base-name llama3.1:8b --existing-base \
-  --label 'Aku style 1 for Llama (1.5×)'
+  --label 'akubot style 1 for Llama (1.5×)'
 ```
 
 `--existing-base` retains an already installed baseline rather than converting it again. The existing baseline may have a different quantization from the new Q8 trained build. Both legacy and current Ollama manifest layouts are checked before installing. The installer selects the proper native message template for SmolLM2 or Llama 3.1. Source registration appears after refreshing Tuning; no bot restart is needed.

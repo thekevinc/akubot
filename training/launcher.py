@@ -125,7 +125,7 @@ def unit_text(repo, root):
     def quoted(value):
         return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%') + '"'
     return f'''[Unit]
-Description=Akubot training launcher (fixed local job only)
+Description=akubot training launcher (fixed local job only)
 
 [Service]
 Type=simple

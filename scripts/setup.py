@@ -15,7 +15,7 @@ PROJECT = Path(__file__).resolve().parent.parent
 
 def default_private_dir() -> Path:
     if os.name == "nt":
-        return Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "Akubot"
+        return Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "akubot"
     return Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local" / "share"))) / "akubot"
 
 
@@ -89,7 +89,7 @@ def initialize(private: Path, owner: str, guilds: str, channels: str, token: str
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Create local Akubot settings without storing secrets in the repository")
+    parser = argparse.ArgumentParser(description="Create local akubot settings without storing secrets in the repository")
     parser.add_argument("--private-dir", type=Path, default=default_private_dir())
     args = parser.parse_args()
     try:
