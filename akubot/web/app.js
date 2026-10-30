@@ -154,29 +154,28 @@ function renderAdapters(adapterId = null) {
   const baseId = $("#tune-base").value;
   const base = state.models.bases.find((entry) => entry.id === baseId);
   const none = node("option", "None (base model only)"); none.value = "";
-  const options = state.models.adapters.map((entry) => {
-    const matching = entry.base_id === baseId;
-    const owner = state.models.bases.find((item) => item.id === entry.base_id);
-    const option = node("option", matching ? entry.label : `${entry.label} (requires ${owner?.label || "another base"})`);
-    option.value = entry.id; option.disabled = !matching || !entry.available;
-    return option;
+  if (!base) throw new Error("No installed base models are available. Check the local model connection.");
+  const compatible = state.models.adapters.filter((entry) => entry.base_id === baseId && entry.available);
+  const options = compatible.map((entry) => {
+    const option = node("option", entry.label); option.value = entry.id; return option;
   });
-  $("#tune-adapter").replaceChildren(none, ...options);
-  const selected = state.models.adapters.find((entry) => entry.id === adapterId && entry.base_id === baseId);
+  $("#tune-adapter").replaceChildren(...(base.available ? [none] : []), ...options);
+  const selected = compatible.find((entry) => entry.id === adapterId) || (!base.available ? compatible[0] : null);
   $("#tune-adapter").value = selected ? selected.id : "";
   $("#tune-model").value = selected ? selected.model : base.model;
-  text("#adapter-help", selected ? `${selected.label} was trained for ${base.label}.` : state.models.adapters.some((entry) => entry.base_id === baseId) ? "Use the base model alone, or choose its trained style above." : "No LoRA is installed for this base. Aku style 1 needs a separate training run to work with a different base model.");
+  text("#adapter-help", selected ? `${selected.label} was trained for ${base.label}.` : compatible.length ? "Choose an installed style for this base, or use the base model alone." : "No trained styles are installed for this base yet.");
 }
 function fillTuning(tuning, revision, models = null) {
   if (models) state.models = models;
   if (!state.models) return;
   const form = $("#tuning-form"), selected = modelSelection(tuning.model);
-  $("#tune-base").replaceChildren(...state.models.bases.map((entry) => {
-    const option = node("option", entry.label + (entry.available ? "" : " (unavailable)")); option.value = entry.id; option.disabled = !entry.available && entry.id !== selected?.base_id; return option;
+  const availableBases = state.models.bases.filter((entry) => entry.available || state.models.adapters.some((adapter) => adapter.base_id === entry.id && adapter.available));
+  $("#tune-base").replaceChildren(...availableBases.map((entry) => {
+    const option = node("option", entry.label); option.value = entry.id; return option;
   }));
-  if (selected) $("#tune-base").value = selected.base_id;
+  if (selected && availableBases.some((entry) => entry.id === selected.base_id)) $("#tune-base").value = selected.base_id;
   renderAdapters(selected?.adapter_id);
-  Object.entries(tuning).forEach(([name, value]) => { const input = form.elements.namedItem(name); if (input) { if (input.type === "checkbox") input.checked = value; else input.value = value; } });
+  Object.entries(tuning).forEach(([name, value]) => { const input = form.elements.namedItem(name); if (input && name !== "model") { if (input.type === "checkbox") input.checked = value; else input.value = value; } });
   state.tuningRevision = revision; state.tuningDirty = false; state.tuningLoaded = true; tuningOutputs(); enableForm(form, true);
 }
 $("#tune-base").addEventListener("change", () => renderAdapters());
