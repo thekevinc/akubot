@@ -6,6 +6,7 @@ import re
 
 from .config import ConfigurationError, Persona
 from .storage import Store
+from .prompts import PromptSettings
 
 
 @dataclass(frozen=True)
@@ -50,22 +51,25 @@ class Control:
         try:
             self.tuning = Tuning.parse(saved["tuning"]) if saved else Tuning(model)
             self.persona = Persona.from_dict(saved["persona"]) if saved else persona
+            self.prompts = PromptSettings.from_dict(saved["prompts"]) if saved and "prompts" in saved else PromptSettings()
             self.revision = int(saved["revision"]) if saved else 0
         except (ValueError, KeyError, TypeError):
             raise ConfigurationError("Saved dashboard settings are invalid. Restore the private database backup.") from None
 
     def document(self) -> dict:
-        return {"revision": self.revision, "tuning": asdict(self.tuning), "persona": asdict(self.persona)}
+        return {"revision": self.revision, "tuning": asdict(self.tuning), "persona": asdict(self.persona), "prompts": asdict(self.prompts)}
 
-    def _commit(self, revision: int, tuning: Tuning, persona: Persona) -> None:
+    def _commit(self, revision: int, tuning: Tuning, persona: Persona, prompts: PromptSettings | None = None) -> None:
         if type(revision) is not int or revision != self.revision:
             raise RevisionConflict("Settings changed in another tab. Refresh before saving again.")
-        data = {"revision": self.revision + 1, "tuning": asdict(tuning), "persona": asdict(persona)}
+        prompts = self.prompts if prompts is None else prompts
+        data = {"revision": self.revision + 1, "tuning": asdict(tuning), "persona": asdict(persona), "prompts": asdict(prompts)}
         self.store.write_control(data)
-        self.tuning, self.persona, self.revision = tuning, persona, self.revision + 1
+        self.tuning, self.persona, self.prompts, self.revision = tuning, persona, prompts, self.revision + 1
 
     def update_tuning(self, revision: int, data: dict) -> None:
         self._commit(revision, Tuning.parse(data), self.persona)
 
-    def update_persona(self, revision: int, data: dict) -> None:
-        self._commit(revision, self.tuning, Persona.from_dict(data))
+    def update_persona(self, revision: int, data: dict, prompts: dict | None = None) -> None:
+        parsed = self.prompts if prompts is None else PromptSettings.from_dict(prompts)
+        self._commit(revision, self.tuning, Persona.from_dict(data), parsed)

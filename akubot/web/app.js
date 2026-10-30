@@ -248,18 +248,53 @@ $("#preview-form").addEventListener("submit", async (event) => {
 async function loadPersona() {
   const form = $("#persona-form"); enableForm(form, false);
   const data = await api("/api/persona");
+  state.promptDefaults = data.prompt_defaults;
+  $("#prompt-rendered").hidden = true;
+  for (const name of ["system_prompt", "user_prompt"]) form.elements.namedItem(name).value = data.prompts[name];
   for (const name of ["name", "description"]) form.elements.namedItem(name).value = data.persona[name];
   for (const name of ["style_rules", "public_facts"]) form.elements.namedItem(name).value = data.persona[name].join("\n");
   state.personaRevision = data.revision; state.personaDirty = false; state.personaLoaded = true; enableForm(form, true);
 }
-$("#persona-form").addEventListener("input", () => { state.personaDirty = true; });
-$("#persona-form").addEventListener("submit", async (event) => {
-  event.preventDefault(); const form = event.currentTarget, persona = {};
+$("#persona-form").addEventListener("input", (event) => {
+  if (event.target.id === "prompt-inspection-message") { $("#prompt-rendered").hidden = true; return; }
+  if (["rendered-system", "rendered-user"].includes(event.target.id)) return;
+  state.personaDirty = true; $("#prompt-rendered").hidden = true;
+  text("#persona-save-state", "Unsaved personality or prompt edits. Save to apply them to the next reply.");
+});
+function personaDraft() {
+  const form = $("#persona-form"), persona = {};
   for (const name of ["name", "description"]) persona[name] = form.elements.namedItem(name).value.trim();
   for (const name of ["style_rules", "public_facts"]) persona[name] = form.elements.namedItem(name).value.split("\n").map((line) => line.trim()).filter(Boolean);
+  const prompts = { system_prompt: $("#system-prompt").value, user_prompt: $("#user-prompt").value };
+  return { persona, prompts };
+}
+$("#restore-prompts").addEventListener("click", () => {
+  if (!state.promptDefaults) return;
+  for (const name of ["system_prompt", "user_prompt"]) $("#persona-form").elements.namedItem(name).value = state.promptDefaults[name];
+  state.personaDirty = true; $("#prompt-rendered").hidden = true;
+  text("#persona-save-state", "Default prompts restored in the form. Save to apply them.");
+});
+$("#render-prompts").addEventListener("click", async () => {
+  const button = $("#render-prompts"); button.disabled = true;
+  try {
+    const data = await send("/api/prompts/render", { ...personaDraft(), message: $("#prompt-inspection-message").value });
+    text("#prompt-render-state", "Composed from the current form. Save personality to apply these templates to replies.");
+    $("#rendered-system").value = data.messages[0].content;
+    $("#rendered-user").value = data.messages.at(-1).content;
+    $("#prompt-rendered").hidden = false;
+  } catch (error) { toast(error.message, true); }
+  finally { button.disabled = false; }
+});
+$("#persona-form").addEventListener("submit", async (event) => {
+  event.preventDefault(); const form = event.currentTarget;
   enableForm(form, false);
-  try { const data = await send("/api/persona", { revision: state.personaRevision, persona }, "PUT"); state.personaRevision = data.revision; state.personaDirty = false; toast("Personality saved. Temporary conversations were cleared."); refreshStatus(); }
-  catch (error) { toast(error.message, true); }
+  try {
+    const data = await send("/api/persona", { revision: state.personaRevision, ...personaDraft() }, "PUT");
+    state.personaRevision = data.revision; state.personaDirty = false;
+    toast("Personality and prompts saved. Temporary conversations were cleared.");
+    text("#persona-save-state", "Saved locally. The next reply uses these prompts. No restart needed.");
+    refreshStatus();
+  } catch (error) { toast(error.message, true); }
   finally { enableForm(form, true); }
 });
 $("#forget-button").addEventListener("click", async () => {

@@ -10,6 +10,9 @@ from aiohttp import web
 
 from .training_state import RUN_ID, TrainingControl, TrainingControlError
 from .model_catalog import ModelCatalog, ModelSelectionError
+from .prompts import PromptSettings, PromptValidationError, build_messages
+from .config import Persona
+from .privacy import clean_input
 from .control import RevisionConflict, Tuning
 from dataclasses import asdict
 from .model import ModelError
@@ -60,6 +63,8 @@ async def private_boundary(request: web.Request, handler):
             return web.json_response({"error": "Expected JSON."}, status=415, headers=HEADERS)
     try:
         response = await handler(request)
+    except PromptValidationError as error:
+        response = web.json_response({"error": str(error)}, status=400)
     except TrainingControlError as error:
         response = web.json_response({"error": str(error)}, status=409)
     except ModelSelectionError as error:
@@ -105,6 +110,7 @@ class Dashboard:
         app.router.add_get("/api/settings", self.settings)
         app.router.add_put("/api/settings", self.save_settings)
         app.router.add_get("/api/persona", self.persona)
+        app.router.add_post("/api/prompts/render", self.render_prompts)
         app.router.add_put("/api/persona", self.save_persona)
         app.router.add_post("/api/pause", self.pause)
         app.router.add_post("/api/forget", self.forget)
@@ -205,16 +211,28 @@ class Dashboard:
 
     async def persona(self, request):
         document = self.client.control.document()
-        return web.json_response({"revision": document["revision"], "persona": document["persona"]})
+        return web.json_response({"revision": document["revision"], "persona": document["persona"], "prompts": document["prompts"], "prompt_defaults": asdict(PromptSettings())})
 
     async def save_persona(self, request):
         body = await request.json()
-        if not isinstance(body, dict) or set(body) != {"revision", "persona"}:
+        if not isinstance(body, dict) or set(body) not in ({"revision", "persona"}, {"revision", "persona", "prompts"}):
             raise ValueError
-        self.client.control.update_persona(body["revision"], body["persona"])
+        self.client.control.update_persona(body["revision"], body["persona"], body.get("prompts"))
         for identifier in self.client.settings.guild_ids:
             self.responder.clear_guild(identifier)
         return await self.persona(request)
+
+    async def render_prompts(self, request):
+        body = await request.json()
+        if not isinstance(body, dict) or set(body) != {"persona", "prompts", "message"} or not isinstance(body["message"], str):
+            raise ValueError
+        message = clean_input(body["message"])
+        if not message or len(message) > 1500:
+            raise PromptValidationError("Use a test message between 1 and 1,500 characters.")
+        persona = Persona.from_dict(body["persona"])
+        settings = PromptSettings.from_dict(body["prompts"])
+        messages = build_messages(persona, self.client.store.examples(message), settings, message)
+        return web.json_response({"messages": messages})
 
     async def pause(self, request):
         body = await request.json()
