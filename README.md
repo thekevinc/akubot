@@ -68,6 +68,12 @@ The check confirms the model is installed and reports how many reviewed style ex
 
 Monitor and configure akubot locally or through Discord.
 
+### Windows desktop and Start menu shortcuts
+
+Run `scripts/Install-akubot-shortcuts.ps1` with Windows PowerShell to install **akubot** shortcuts on your desktop and in Start. The defaults target Ubuntu, user `kc`, and `/home/kc/workspace/akubot`; override `-Distro`, `-LinuxUser`, or `-ProjectPath` for a different installation.
+
+Double-click **akubot** to open Docker Desktop if needed, start the two existing akubot containers, and open the local dashboard. Already running containers are left running. Closing the startup window leaves the bot running in Docker. The launcher does not build images, recreate containers, or start training. Its files live under `%LOCALAPPDATA%\akubot\launcher`; the application and private data remain in WSL. Remove the two shortcuts and that launcher folder to uninstall the shortcuts.
+
 ### Local dashboard
 
 Once the bot is running, open **[http://localhost:8765](http://localhost:8765)** on this computer. The dashboard is served by the bot container and is published only on the host's loopback address. It is not hosted on GitHub or a third-party website. If that port is already in use, set `DASHBOARD_HOST_PORT` in `.env` before starting this project. Do not stop another project's server to free the port.
