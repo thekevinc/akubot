@@ -102,6 +102,7 @@ class Dashboard:
         app.router.add_get("/", self.index)
         app.router.add_get("/app.js", self.javascript)
         app.router.add_get("/style.css", self.stylesheet)
+        app.router.add_get("/favicon.png", self.favicon)
         app.router.add_get("/api/status", self.status)
         app.router.add_get("/api/training", self.training_status)
         app.router.add_post("/api/training/control", self.training_command)
@@ -142,6 +143,9 @@ class Dashboard:
 
     async def stylesheet(self, request):
         return web.Response(text=(STATIC / "style.css").read_text(), content_type="text/css")
+
+    async def favicon(self, request):
+        return web.Response(body=(STATIC / "favicon.png").read_bytes(), content_type="image/png")
 
     async def model_status(self, force: bool = False) -> dict:
         if force or time.monotonic() - self.model_checked > 5:
