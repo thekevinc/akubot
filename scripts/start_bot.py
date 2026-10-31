@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Start the existing local installation without recreating any containers."""
+import argparse
 import json
 import subprocess
 import time
@@ -40,6 +41,21 @@ def wait_for(check, seconds, message):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="Check the installation without starting anything")
+    args = parser.parse_args()
+    if args.check:
+        print("Windows-to-WSL handoff works.", flush=True)
+        try:
+            docker("info", "--format", "{{.ServerVersion}}")
+        except StartupError:
+            print("Docker is currently unavailable. The normal shortcut will open Docker Desktop first.", flush=True)
+            return
+        for name in ("akubot-local-ai-ollama", "akubot-dashboard-and-discord"):
+            state = inspect(name).get("State", {}).get("Status", "unknown")
+            print(f"{name}: {state}", flush=True)
+        print("Installation check complete. No containers started.", flush=True)
+        return
     print("Waiting for Docker Desktop...", flush=True)
     def engine_ready():
         try:
