@@ -23,10 +23,14 @@ if (-not ("Akubot.ShortcutRefresh" -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
 namespace Akubot {
     public static class ShortcutRefresh {
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
         public static extern void SHChangeNotify(uint eventId, uint flags, string item, IntPtr secondItem);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern uint GetFinalPathNameByHandle(SafeFileHandle file, StringBuilder path, uint length, uint flags);
     }
 }
 '@
@@ -48,6 +52,18 @@ $compiler.Dispose()
 if ($compiled.Errors.HasErrors) {
     throw "The Windows launcher could not compile: $($compiled.Errors | ForEach-Object { $_.ErrorText })"
 }
+# Packaged Windows apps can redirect LocalAppData writes into their package.
+# Explorer is outside that environment, so its links must use the physical path.
+$stream = [IO.File]::OpenRead($executable)
+try {
+    $physicalPath = New-Object Text.StringBuilder 32768
+    $length = [Akubot.ShortcutRefresh]::GetFinalPathNameByHandle($stream.SafeFileHandle, $physicalPath, $physicalPath.Capacity, 0)
+    if ($length -eq 0 -or $length -ge $physicalPath.Capacity) { throw "Windows could not resolve the actual launcher path." }
+    $executable = $physicalPath.ToString()
+    if ($executable.StartsWith('\\?\UNC\')) { $executable = '\\' + $executable.Substring(8) }
+    elseif ($executable.StartsWith('\\?\')) { $executable = $executable.Substring(4) }
+    $destination = [IO.Path]::GetDirectoryName($executable)
+} finally { $stream.Dispose() }
 $arguments = '-Distro "{0}" -LinuxUser "{1}" -ProjectPath "{2}"' -f $Distro, $LinuxUser, $ProjectPath
 $shell = New-Object -ComObject WScript.Shell
 foreach ($folder in @([Environment]::GetFolderPath("Desktop"), [Environment]::GetFolderPath("Programs"))) {
