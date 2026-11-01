@@ -14,7 +14,7 @@ from .prompts import PromptValidationError
 from .control import RevisionConflict, Tuning
 from dataclasses import asdict
 from .model import ModelError
-from .service import Notice, Request
+from .service import DM_SCOPE, Notice, Request
 
 
 STATIC = Path(__file__).with_name("web")
@@ -97,6 +97,10 @@ class Dashboard:
     def responder(self):
         return self.client.responder
 
+    @property
+    def conversation_scopes(self):
+        return (*self.client.settings.guild_ids, DM_SCOPE)
+
     def app(self) -> web.Application:
         app = web.Application(middlewares=[private_boundary], client_max_size=65_536)
         app.router.add_get("/", self.index)
@@ -166,7 +170,7 @@ class Dashboard:
         latency = self.client.latency
         paused = sum(self.client.store.is_paused(identifier) for identifier in self.client.settings.guild_ids)
         return web.json_response({
-            "bot": {"connected": ready, "gateway_ms": round(latency * 1000) if ready and 0 <= latency < 100 else None, "servers": len(self.client.settings.guild_ids), "paused_servers": paused},
+            "bot": {"connected": ready, "gateway_ms": round(latency * 1000) if ready and 0 <= latency < 100 else None, "servers": len(self.client.settings.guild_ids), "paused_servers": paused, "dm_paused": self.client.store.is_paused(DM_SCOPE)},
             "model": await self.model_status(),
             "metrics": self.responder.metrics.snapshot(),
             "sessions": len(self.responder.memory.sessions),
@@ -208,7 +212,7 @@ class Dashboard:
         self.client.control.update_tuning(body["revision"], body["tuning"])
         self.responder.apply_tuning()
         if previous_model != self.client.control.tuning.model:
-            for identifier in self.client.settings.guild_ids:
+            for identifier in self.conversation_scopes:
                 self.responder.clear_guild(identifier)
         self.model_checked = -100
         return await self.settings(request)
@@ -225,7 +229,7 @@ class Dashboard:
             self.client.control.update_persona(body["revision"], body["persona"], body.get("prompts"))
         else:
             self.client.control.update_prompts(body["revision"], body["prompts"])
-        for identifier in self.client.settings.guild_ids:
+        for identifier in self.conversation_scopes:
             self.responder.clear_guild(identifier)
         return await self.persona(request)
 
@@ -233,14 +237,14 @@ class Dashboard:
         body = await request.json()
         if not isinstance(body, dict) or set(body) != {"paused"} or type(body["paused"]) is not bool:
             raise ValueError
-        for identifier in self.client.settings.guild_ids:
+        for identifier in self.conversation_scopes:
             self.responder.pause(identifier, body["paused"])
         return web.json_response({"paused": body["paused"]})
 
     async def forget(self, request):
         if await request.json() != {}:
             raise ValueError
-        for identifier in self.client.settings.guild_ids:
+        for identifier in self.conversation_scopes:
             self.responder.clear_guild(identifier)
         return web.json_response({"cleared": True})
 

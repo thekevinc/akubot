@@ -449,7 +449,7 @@ class BotTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.client.intents.message_content)
         self.assertFalse(self.client.intents.members)
         self.assertFalse(self.client.intents.presences)
-        self.assertFalse(self.client.intents.dm_messages)
+        self.assertTrue(self.client.intents.dm_messages)
         self.assertIsNone(self.client._connection._messages)
 
 

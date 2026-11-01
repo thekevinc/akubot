@@ -18,6 +18,9 @@ from .storage import Store
 
 logger = logging.getLogger("akubot")
 
+# Discord server IDs are positive. Keep DMs separate from servers and previews.
+DM_SCOPE = -1
+
 
 class Notice(RuntimeError):
     def __init__(self, message: str, code: str = "notice"):
@@ -32,6 +35,10 @@ class Request:
     user_id: int
     text: str
     source: str = "discord"
+
+    @property
+    def is_dm(self) -> bool:
+        return self.guild_id == DM_SCOPE and self.source == "discord"
 
     @property
     def key(self) -> SessionKey:
@@ -50,14 +57,18 @@ class Gate:
         cooldown = self.control.tuning.cooldown_seconds if self.control else 2
         limit = self.control.tuning.requests_per_minute if self.control else 30
         self.users = {user: last for user, last in self.users.items() if now - last < 30}
-        recent = self.guilds.setdefault(request.guild_id, deque())
+        # A minute limit belongs to each DM, just as it belongs to each server.
+        self.guilds = {scope: times for scope, times in self.guilds.items() if times and now - times[-1] < 60}
+        scope = -request.channel_id if request.is_dm else request.guild_id
+        recent = self.guilds.setdefault(scope, deque())
         while recent and now - recent[0] >= 60:
             recent.popleft()
         if request.user_id in self.users and now - self.users[request.user_id] < cooldown:
             seconds = math.ceil(cooldown - (now - self.users[request.user_id]))
-            raise Notice(f"You can ping me again in {seconds} second{'s' if seconds != 1 else ''}.", "cooldown")
+            raise Notice(f"You can message me again in {seconds} second{'s' if seconds != 1 else ''}.", "cooldown")
         if len(recent) >= limit:
-            raise Notice("I've reached this server's limit for the minute. Try again shortly.", "server_limit")
+            place = "conversation" if request.is_dm else "server"
+            raise Notice(f"I've reached this {place}'s limit for the minute. Try again shortly.", "server_limit")
         if self.pending >= 4:
             raise Notice("I'm handling a few replies already. Try again shortly.", "busy")
         self.users[request.user_id] = now
@@ -102,14 +113,15 @@ class Responder:
         self.clear_guild(guild_id)
 
     async def reply(self, request: Request) -> str:
-        identifier = self.metrics.begin(request.source)
+        identifier = self.metrics.begin("dm" if request.is_dm else request.source)
         outcome, reserved, registered, timing = "error", False, False, None
         try:
             if self.store.is_paused(request.guild_id):
-                raise Notice("I'm paused in this server.", "paused")
+                raise Notice("DM replies are paused." if request.is_dm else "I'm paused in this server.", "paused")
             prompt = clean_input(request.text)
             if not prompt:
-                raise Notice("Send text with your reply or @mention. For replies, leave the reply ping on so Discord shares the text.", "empty")
+                hint = "Send a text message so I can reply. Attachments are not read." if request.is_dm else "Send text with your reply or @mention. For replies, leave the reply ping on so Discord shares the text."
+                raise Notice(hint, "empty")
             if len(prompt) > 1500:
                 raise Notice("Keep the message under 1,500 characters so I can answer locally.", "too_long")
             self.gate.enter(request)
@@ -120,7 +132,7 @@ class Responder:
             async with self.slot:
                 self.metrics.active(identifier)
                 if self.store.is_paused(request.guild_id):
-                    raise Notice("I'm paused in this server.", "paused")
+                    raise Notice("DM replies are paused." if request.is_dm else "I'm paused in this server.", "paused")
                 current = (self.revisions.get(request.key, 0), self.guild_revisions.get(request.guild_id, 0))
                 if current != revision:
                     raise Notice("That reply was cancelled because the conversation was cleared or paused.", "cancelled")

@@ -11,7 +11,7 @@ from discord import app_commands
 
 from .config import Persona, Settings
 from .model import Ollama
-from .service import Notice, Request, Responder
+from .service import DM_SCOPE, Notice, Request, Responder
 from .storage import Store
 from .triggers import is_reply_to_bot
 from .control import Control
@@ -31,6 +31,7 @@ class AkuClient(discord.Client):
         intents = discord.Intents.none()
         intents.guilds = True
         intents.guild_messages = True
+        intents.dm_messages = True
         # Mentioned messages and default reply pings need no broad content access.
         super().__init__(
             intents=intents, max_messages=None,
@@ -122,17 +123,25 @@ class AkuClient(discord.Client):
         if (
             self.user is None or self.responder is None
             or message.author.bot or message.webhook_id is not None
-            or not in_scope(self.settings, message.guild.id if message.guild else None, message.channel.id)
         ):
+            return
+        is_dm = message.guild is None and getattr(message.channel, "type", None) == discord.ChannelType.private
+        if message.guild is None and not is_dm:
+            return
+        if not is_dm and not in_scope(self.settings, message.guild.id, message.channel.id):
             return
         mention = re.compile(rf"<@!?{self.user.id}>")
         # Reply pings appear in mentions metadata rather than the text itself.
         addressed = bool(mention.search(message.content)) or any(
             getattr(user, "id", None) == self.user.id for user in getattr(message, "mentions", ())
         )
-        if not addressed and not is_reply_to_bot(message, self.user.id):
+        if not is_dm and not addressed and not is_reply_to_bot(message, self.user.id):
             return
-        request = Request(message.guild.id, message.channel.id, message.author.id, mention.sub("", message.content).strip())
+        request = Request(
+            DM_SCOPE if is_dm else message.guild.id,
+            message.channel.id, message.author.id,
+            mention.sub("", message.content).strip(),
+        )
         try:
             async with message.channel.typing():
                 answer = await asyncio.wait_for(self.responder.reply(request), timeout=240)

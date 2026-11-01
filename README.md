@@ -7,7 +7,7 @@ This is an initial working implementation. Until you add your writing samples, r
 ## What stays private
 
 - Live messages go from Discord to your bot and your local Ollama model. There is no external AI provider, analytics service, or hosted vector database.
-- Ordinary channel history is not fetched. The bot responds only to explicit mentions or direct replies to akubot in approved servers and optional approved channels. It ignores DMs, webhooks, and other bots.
+- Ordinary channel history is not fetched. The bot responds only to explicit mentions or direct replies to akubot in approved servers and optional approved channels. One-to-one DMs also receive replies without a mention. It ignores group DMs, webhooks, and other bots.
 - Short conversation memory is separate for each server, channel, and person. It lives in RAM, expires after 15 minutes of inactivity, and is swept every minute. At most two truncated exchanges per conversation and 256 conversations are retained.
 - Only examples you explicitly review and load are stored permanently. Those examples must be suitable for everyone who can invoke the bot, because model instructions cannot guarantee that examples stay secret.
 - Secrets, models, exports, reviewed examples, and the database are stored outside the checkout, outside OneDrive by default. Only code belongs in GitHub.
@@ -98,6 +98,12 @@ The dashboard stops when the bot container stops. To bring up this project's GPU
 cd ~/workspace/akubot
 docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 ```
+
+### Direct messages
+
+Send akubot a one-to-one Discord DM to get a reply without an @mention. DMs use the same model, LoRA strength, prompts, temperature, output limits and temporary-memory settings as server mentions. Anyone who can DM the bot can use this path. Server and channel allowlists still govern server replies; they do not apply to one-to-one DMs. Group DMs are ignored.
+
+DM memory is separate for each person and separate from all server conversations. Live DM text is not stored in SQLite, added to training data, or sent to a hosted AI provider. Activity shows only “Direct messages,” without the sender's name or message text. The dashboard's Pause replies and Clear memory controls include DMs, and changing the model or prompts clears DM memory too. The per-minute limit applies separately to each DM; user cooldown and the shared generation queue still apply. No new privileged Discord permissions or Developer Portal changes are needed.
 
 ### Discord controls
 

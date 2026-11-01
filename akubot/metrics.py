@@ -35,10 +35,10 @@ class Metrics:
             if type(value) in {int, float} and math.isfinite(value) and value >= 0:
                 data[key] = round(value, 4)
         self.history.appendleft(data)
-        self.counts[outcome if event["source"] == "discord" else event["source"] + "_" + outcome] += 1
+        self.counts[outcome if event["source"] in {"discord", "dm"} else event["source"] + "_" + outcome] += 1
 
     def snapshot(self) -> dict:
-        successful = [event for event in self.history if event["outcome"] == "reply" and event["source"] == "discord"]
+        successful = [event for event in self.history if event["outcome"] == "reply" and event["source"] in {"discord", "dm"}]
         ordered = sorted(event["total_seconds"] for event in successful)
         return {
             "uptime_seconds": round(self.clock() - self.started),

@@ -60,11 +60,12 @@ $(".brand").addEventListener("click", (event) => { event.preventDefault(); selec
 
 function renderStatus(data) {
   state.latest = data;
-  const allPaused = data.bot.paused_servers === data.bot.servers;
-  const label = !data.bot.connected ? "Reconnecting" : allPaused ? "Paused" : data.bot.paused_servers ? "Partly paused" : "Connected";
+  const anyPaused = Boolean(data.bot.paused_servers || data.bot.dm_paused);
+  const allPaused = data.bot.paused_servers === data.bot.servers && data.bot.dm_paused;
+  const label = !data.bot.connected ? "Reconnecting" : allPaused ? "Paused" : anyPaused ? "Partly paused" : "Connected";
   $("#connection-badge").replaceChildren(node("span", undefined, `status-dot${data.bot.connected && !allPaused ? " online" : ""}`), document.createTextNode(label));
   text("#sidebar-status", label); $("#sidebar-state").className = `status-dot${data.bot.connected && !allPaused ? " online" : ""}`;
-  text("#pause-button", data.bot.paused_servers ? "Resume replies" : "Pause replies"); $("#pause-button").disabled = false;
+  text("#pause-button", anyPaused ? "Resume replies" : "Pause replies"); $("#pause-button").disabled = false;
   for (const [selector, value] of [["#last-reply", data.metrics.last_reply_seconds], ["#typical-reply", data.metrics.typical_reply_seconds]]) {
     text(selector, value === null ? "Waiting" : duration(value)); $(selector).classList.toggle("waiting", value === null);
   }
@@ -98,7 +99,7 @@ function renderActivity(events) {
   const labels = { reply: "Replied", ready: "Ready", cooldown: "Cooldown", server_limit: "Server limit", paused: "Paused", busy: "Busy", cancelled: "Cancelled", model_error: "Model error", empty: "Empty ping", too_long: "Too long", empty_reply: "Empty reply", error: "Error" };
   body.replaceChildren(...events.slice(0, 12).map((event) => {
     const row = node("tr");
-    const name = event.source === "warm" ? "Model load" : event.source === "preview" ? "Local test" : `Reply ${event.id}`;
+    const name = event.source === "dm" ? "Direct message" : event.source === "warm" ? "Model load" : event.source === "preview" ? "Local test" : `Reply ${event.id}`;
     [name, clock(event.at), duration(event.queue_seconds), duration(event.load_seconds), duration(event.generation_seconds), duration(event.total_seconds)].forEach((value) => row.append(node("td", value)));
     const cell = node("td"); const type = ["reply", "ready"].includes(event.outcome) ? "" : ["error", "model_error", "empty_reply"].includes(event.outcome) ? " error" : " warning";
     cell.append(node("span", labels[event.outcome] || "Unavailable", `result${type}`)); row.append(cell); return row;
@@ -230,7 +231,7 @@ $("#restore-tuning").addEventListener("click", () => {
 });
 $("#pause-button").addEventListener("click", async () => {
   if (!state.latest) return;
-  try { const paused = !state.latest.bot.paused_servers; await send("/api/pause", { paused }); toast(paused ? "Replies paused. Temporary conversations were cleared." : "Replies resumed."); await refreshStatus(); }
+  try { const paused = !(state.latest.bot.paused_servers || state.latest.bot.dm_paused); await send("/api/pause", { paused }); toast(paused ? "Replies paused. Temporary conversations were cleared." : "Replies resumed."); await refreshStatus(); }
   catch (error) { toast(error.message, true); }
 });
 $("#warm-button").addEventListener("click", async () => {
